@@ -1,0 +1,149 @@
+'use strict';
+const {Plugin,ItemView,Modal,Notice,PluginSettingTab,getAllTags}=require('obsidian');
+const C=require('./core.cjs');const {Store}=require('./store.cjs');const V=require('./views.cjs');
+const VIEW='todo-dashboard-view';
+const DEFAULTS={lists:[{id:'study',name:'学习',color:'#149e9a'},{id:'work',name:'工作',color:'#6488d8'},{id:'life',name:'生活',color:'#d58c48'}],stats:[],recentSort:'modified',excludedFolders:[]};
+function clone(o){return JSON.parse(JSON.stringify(o));}
+function formField(parent,label,type,value){const wrap=V.el(parent,'label','td-field');V.el(wrap,'span','',label);const input=V.el(wrap,type==='textarea'?'textarea':'input','td-input');if(type!=='textarea')input.type=type;input.value=value??'';return input;}
+function formSelect(parent,label,options,value){const wrap=V.el(parent,'label','td-field');V.el(wrap,'span','',label);return V.select(wrap,options,value,()=>{});}
+function validRoot(root){return !!root&&root===root.trim()&&!root.startsWith('.')&&!root.startsWith('/')&&!root.includes('\\')&&!root.split('/').some(s=>!s||s==='.'||s==='..'||/[<>:"|?*]/.test(s));}
+class TaskModal extends Modal{
+ constructor(p,task,seed={}){super(p.app);this.p=p;this.original=task;this.token=task?p.store.token('task',task.id):undefined;this.task=clone(task||{id:C.uid(),title:'',description:'',status:'open',date:'',startTime:'',endTime:'',quadrant:'today',listId:'',repeat:'none',subtasks:[],createdAt:new Date().toISOString(),...seed});}
+ onOpen(){
+  const t=this.task,root=this.contentEl;root.classList.add('td-modal');V.heading(root,'TASK / 任务',this.original?'编辑任务':'写下一个安排');
+  const form=V.el(root,'form','td-form');this.form=form;const title=formField(form,'任务名称','text',t.title);title.required=true;title.placeholder='下一件想做的事…';
+  const grid=V.el(form,'div','td-form-grid');const date=formField(grid,'计划日期（可留空）','date',t.date),start=formField(grid,'开始时间（可选）','time',t.startTime),end=formField(grid,'结束时间（可选）','time',t.endTime);
+  const list=formSelect(grid,'分类清单',[['','未分类'],...(this.p.store.settings.lists||[]).map(l=>[l.id,l.name])],t.listId||'');
+  const q=formSelect(grid,'所属象限',Object.entries(C.QUADRANTS),t.quadrant||'today');
+  const repeat=formSelect(grid,'重复规则',[['none','不重复'],['daily','每天'],['weekly','每周'],['monthly','每月']],t.repeat||'none');
+  V.el(form,'p','td-muted td-small','重复任务未完成时不生成下一次；完成后安排下一个周期。');
+  const desc=formField(form,'备注','textarea',t.description),note=formField(form,'关联笔记路径（可选）','text',t.note||'');note.placeholder='例如：科研/综述.md';
+  if(t.note)V.button(form,'打开关联笔记 ↗',()=>this.p.app.workspace.openLinkText(t.note,'',false),'td-link');
+  const subSection=V.el(form,'div','td-subtasks');V.el(subSection,'h3','','步骤 / 子任务');const rows=V.el(subSection,'div','');
+  const renderSubs=()=>{rows.replaceChildren();t.subtasks.forEach((s,i)=>{const row=V.el(rows,'div','td-subtask-edit');const check=V.el(row,'input','td-check');check.type='checkbox';check.checked=s.done;check.setAttribute('aria-label','完成子任务');check.onchange=()=>{s.done=check.checked;};const text=V.el(row,'input','td-input');text.value=s.title;text.setAttribute('aria-label','子任务名称');text.oninput=()=>{s.title=text.value;};V.button(row,'移除',()=>{t.subtasks.splice(i,1);renderSubs();},'td-small');});};renderSubs();V.button(subSection,'＋ 添加步骤',()=>{t.subtasks.push({id:C.uid(),title:'',done:false});renderSubs();},'td-link');
+  const error=V.el(form,'p','td-error');error.setAttribute('role','alert');const actions=V.el(form,'div','td-modal-actions');
+  if(this.original){V.button(actions,'删除任务',()=>this.commit(async()=>{await this.p.saveTask({...this.original,deleted:true},this.token);this.close();},error),'td-danger');V.button(actions,t.status==='done'?'取消完成':'标记完成',()=>this.commit(async()=>{const edited=this.read();await this.p.saveTask(edited,this.token);await this.p.toggleTask(edited);this.close();},error));}
+  V.button(actions,'取消',()=>this.close());const save=V.button(actions,'保存任务',()=>{} ,'mod-cta');save.type='submit';
+  this.read=()=>{
+   if(!title.value.trim())throw Error('请输入任务名称');if(repeat.value!=='none'&&!date.value)throw Error('重复任务需要计划日期');
+   if(start.value&&end.value&&end.value<=start.value)throw Error('结束时间需晚于开始时间；跨日安排请拆为两天');
+   const dateChanged=date.value!==t.date;
+   return {...t,title:title.value.trim(),date:date.value,startTime:start.value,endTime:end.value,listId:list.value,quadrant:q.value,repeat:repeat.value,repeatAnchor:date.value?(dateChanged?Number(date.value.slice(8)):t.repeatAnchor||Number(date.value.slice(8))):null,description:desc.value,note:note.value.trim(),subtasks:t.subtasks.filter(s=>s.title.trim()).map(s=>({...s,title:s.title.trim()})),updatedAt:new Date().toISOString()};
+  };
+  form.onsubmit=e=>{e.preventDefault();if(form.reportValidity())this.commit(async()=>{await this.p.saveTask(this.read(),this.token);this.close();},error);};
+  setTimeout(()=>title.focus(),50);
+ }
+ async commit(action,error){if(this.busy)return;this.busy=true;try{await action();}catch(e){error.textContent=e.message;}finally{this.busy=false;}}
+ onClose(){this.contentEl.replaceChildren();}
+}
+class SimpleModal extends Modal{
+ constructor(p,title,build){super(p.app);this.titleText=title;this.build=build;}
+ onOpen(){this.contentEl.classList.add('td-modal');V.heading(this.contentEl,'TODO WORKSPACE',this.titleText);this.build(this.contentEl,this);}
+ onClose(){this.contentEl.replaceChildren();}
+}
+class DashboardView extends ItemView{
+ constructor(leaf,p){super(leaf);this.plugin=p;this.state={page:'home',month:C.localDate().slice(0,7),selectedDate:C.localDate(),timelineDate:C.localDate(),list:'',showDone:false,query:''};}
+ getViewType(){return VIEW;}getDisplayText(){return '从容 · Todo 工作台';}getIcon(){return 'layout-dashboard';}
+ async onOpen(){this.plugin.views.add(this);this.render();}
+ async onClose(){this.plugin.views.delete(this);}
+ go(page){this.state.page=page;this.render();}
+ render(){V.render(this);}
+}
+class SettingsTab extends PluginSettingTab{
+ constructor(app,p){super(app,p);this.p=p;}
+ display(){this.containerEl.replaceChildren();V.heading(this.containerEl,'TODO WORKSPACE','Todo 工作台');V.el(this.containerEl,'p','','任务和专注记录保存在普通笔记库文件中。请将数据目录纳入 EasySync，两端均需安装插件。');V.button(this.containerEl,'打开偏好设置',()=>this.p.preferences(),'mod-cta');V.el(this.containerEl,'p','td-muted','当前数据目录：'+this.p.store.root);}
+}
+class TodoPlugin extends Plugin{
+ async onload(){
+  this.views=new Set();this.local=(await this.loadData())||{};
+  this.local.root=validRoot(this.local.root)?this.local.root:'Todo工作台';this.registerView(VIEW,leaf=>new DashboardView(leaf,this));
+  this.store=new Store(this.app.vault,this.local.root);await this.store.load();
+  if(!this.store.paths.has('settings:settings')){
+   const settingsPath=this.store.root+'/设置.md';
+   if(!this.app.vault.getAbstractFileByPath(settingsPath))await this.store.saveSettings(clone(DEFAULTS));
+  }
+  this.timer=null;this.localKey=`todo-dashboard:timer:${this.app.vault.getName()}:${this.local.root}`;
+  try{this.timer=JSON.parse(localStorage.getItem(this.localKey)||'null');}catch{new Notice('计时恢复数据损坏，请检查本机存储');}
+  if(this.timer&&(!Array.isArray(this.timer.segments)||typeof this.timer.accumulated!=='number'))this.timer=null;
+  this.addRibbonIcon('layout-dashboard','打开 Todo 首页',()=>this.open());
+  this.addCommand({id:'open-dashboard',name:'打开首页仪表盘',callback:()=>this.open()});
+  this.addCommand({id:'open-calendar',name:'打开日程概览',callback:()=>this.open('calendar')});
+  this.addCommand({id:'new-task',name:'新建任务',callback:()=>this.editTask(null,{date:C.localDate()})});
+  this.addCommand({id:'toggle-focus',name:'开始 / 暂停 / 继续专注',callback:()=>this.run(()=>this.timer?this.toggleTimer():this.startTimer(null))});
+  this.addSettingTab(new SettingsTab(this.app,this));
+  for(const event of ['create','modify','delete','rename'])this.registerEvent(this.app.vault.on(event,(file,oldPath)=>{if(file.path.startsWith(this.store.root+'/')||oldPath?.startsWith(this.store.root+'/'))this.scheduleReload();else if(file.extension==='md')this.scheduleRender();}));
+  this.registerEvent(this.app.metadataCache.on('changed',()=>this.scheduleRender()));
+  this.registerInterval(globalThis.setInterval(()=>{for(const view of this.views)for(const e of view.contentEl.querySelectorAll('[data-timer]'))e.textContent=C.duration(this.timer?C.elapsed(this.timer):0);},1000));
+  this.registerDomEvent(document,'visibilitychange',()=>{if(document.hidden){this.hiddenAt=Date.now();this.persistTimer();}else{const gap=this.hiddenAt?Date.now()-this.hiddenAt:0;if(gap>60000&&this.timer?.runningSince!=null)this.reviewTimer(this.hiddenAt);else this.refresh();this.hiddenAt=null;}});
+  this.app.workspace.onLayoutReady(()=>{this.run(async()=>{await this.repairRepeats();if(this.local.autoOpen!==false)await this.open();if(this.timer)this.reviewTimer(this.timer.savedAt||Date.now());});});
+ }
+ onunload(){clearTimeout(this.reloadHandle);clearTimeout(this.renderHandle);this.persistTimer();}
+ async run(fn){try{return await fn();}catch(e){console.error('[Todo 工作台]',e);new Notice('操作未完成：'+e.message,8000);}}
+ refresh(){for(const v of this.views)v.render();}
+ scheduleRender(){clearTimeout(this.renderHandle);this.renderHandle=setTimeout(()=>this.refresh(),400);}
+ scheduleReload(){clearTimeout(this.reloadHandle);this.reloadHandle=setTimeout(()=>this.run(()=>this.reload()),350);}
+ async reload(){await this.store.load();await this.repairRepeats();this.refresh();}
+ async repairRepeats(){
+  for(const task of [...this.store.tasks.values()]){
+   if(task.deleted||task.status!=='done'||!task.completedAt||task.repeatIssued)continue;
+   try{
+    const revision=this.store.token?.('task',task.id);
+    const next=C.nextOccurrence(task,task.completedAt);if(!next)continue;
+    const series=task.seriesId||task.id;
+    const successorExists=[...this.store.tasks.values()].some(t=>t.id!==task.id&&(t.seriesId||t.id)===series&&(t.status==='open'||t.date>task.date));
+    if(!successorExists&&!this.store.tasks.has(next.id))await this.store.ensureTask(next);
+    await this.store.saveTask({...task,repeatIssued:true},revision);
+   }catch(e){this.store.errors.push({path:this.store.paths?.get('task:'+task.id)||`任务 ${task.id}`,message:'重复任务修复失败：'+e.message});}
+  }
+ }
+ async open(page='home'){
+  let leaf=this.app.workspace.getLeavesOfType(VIEW)[0];if(!leaf){leaf=this.app.workspace.getLeaf('tab');await leaf.setViewState({type:VIEW,active:true});}await this.app.workspace.revealLeaf(leaf);leaf.view.go(page);
+ }
+ list(id){return (this.store.settings.lists||[]).find(l=>l.id===id);}
+ notes(){return this.app.vault.getMarkdownFiles().filter(f=>!f.path.startsWith(this.store.root+'/'));}
+ noteTags(file){const cache=this.app.metadataCache.getFileCache(file);return cache?(getAllTags(cache)||[]):[];}
+ editTask(task,seed={}){new TaskModal(this,task,seed).open();}
+ async saveTask(task,token){await this.store.saveTask({...task,updatedAt:new Date().toISOString()},token);this.refresh();}
+ async toggleTask(task){
+  const current=this.store.tasks.get(task.id);if(!current)return;
+  if(current.status==='done'){
+   if([...this.store.tasks.values()].some(t=>!t.deleted&&t.id!==current.id&&t.status==='open'&&(t.seriesId||t.id)===(current.seriesId||current.id))){new Notice('该系列已有下一次任务，请先处理下一次，再取消本次完成。',7000);return;}
+   await this.saveTask({...current,status:'open',completedAt:null,repeatIssued:false});
+  }else{const result=C.completeTask(current);await this.saveTask(result.task);const revision=this.store.token?.('task',current.id);if(result.next){await this.store.ensureTask(result.next);await this.saveTask({...result.task,repeatIssued:true},revision);}}
+  this.refresh();
+ }
+ async updateSettings(patch,token){await this.store.saveSettings({...this.store.settings,...patch},token);this.refresh();}
+ editList(list){
+  const token=this.store.token('settings','settings');new SimpleModal(this,list?'编辑清单':'创建清单',(root,m)=>{
+   const name=formField(root,'清单名称','text',list?.name||'');const color=formField(root,'颜色','color',list?.color||C.PALETTE[(this.store.settings.lists||[]).length%C.PALETTE.length]);
+   const palette=V.el(root,'div','td-palette');for(const shade of C.PALETTE){const b=V.button(palette,'',()=>{color.value=shade;},'td-swatch');b.style.background=shade;b.setAttribute('aria-label',shade);}
+   const error=V.el(root,'p','td-error');V.button(root,'保存清单',async()=>{try{if(!name.value.trim())throw Error('请输入名称');const lists=clone(this.store.settings.lists||[]),value={id:list?.id||C.uid(),name:name.value.trim(),color:color.value};const i=lists.findIndex(x=>x.id===value.id);if(i<0)lists.push(value);else lists[i]=value;await this.updateSettings({lists},token);m.close();}catch(e){error.textContent=e.message;}},'mod-cta');
+  }).open();
+ }
+ editStat(){const token=this.store.token('settings','settings');new SimpleModal(this,'添加笔记统计',(root,m)=>{
+  const kind=formSelect(root,'统计类型',[['folder','文件夹（包括子文件夹）'],['tag','标签（精确匹配）']],'folder'),value=formField(root,'文件夹路径或标签','text','');value.placeholder='例如：科研 或 #学习';const error=V.el(root,'p','td-error');
+  V.button(root,'添加统计',async()=>{try{const v=value.value.trim().replace(/^\/+|\/+$/g,'');if(!v)throw Error('请输入文件夹或标签');await this.updateSettings({stats:[...(this.store.settings.stats||[]),{id:C.uid(),kind:kind.value,value:v}]},token);m.close();}catch(e){error.textContent=e.message;}},'mod-cta');
+ }).open();}
+ showNotes(title,notes){new SimpleModal(this,title,(root)=>{if(!notes.length)V.empty(root,'没有匹配的笔记');for(const f of notes)V.button(root,f.path,()=>this.app.workspace.openLinkText(f.path,'',false),'td-note');}).open();}
+ showErrors(){new SimpleModal(this,'需要检查的数据文件',root=>{for(const e of this.store.errors){V.el(root,'p','td-error',e.path+'：'+e.message);V.button(root,'打开文件',()=>this.app.workspace.openLinkText(e.path,'',false),'td-link');}}).open();}
+ preferences(){const token=this.store.token('settings','settings');new SimpleModal(this,'偏好设置',(root,m)=>{
+  const auto=V.el(root,'label','td-toggle'),check=V.el(auto,'input','');check.type='checkbox';check.checked=this.local.autoOpen!==false;V.el(auto,'span','','启动时自动进入首页');
+  const excludes=formField(root,'最近笔记排除文件夹（每行一个）','textarea',(this.store.settings.excludedFolders||[]).join('\n'));
+  V.el(root,'p','td-muted','数据目录：'+this.store.root+'。此目录中的数据笔记自动排除于笔记统计和最近笔记。');
+  V.el(root,'p','td-muted','EasySync：请同步整个数据目录。运行中计时器保留在本机，结束后专注记录参与同步。');
+  const error=V.el(root,'p','td-error');V.button(root,'保存设置',async()=>{try{await this.updateSettings({excludedFolders:excludes.value.split('\n').map(s=>s.trim().replace(/\/$/,'')).filter(Boolean)},token);this.local.autoOpen=check.checked;await this.saveData(this.local);m.close();}catch(e){error.textContent=e.message;}},'mod-cta');
+ }).open();}
+ persistTimer(){try{if(this.timer){this.timer.savedAt=Date.now();localStorage.setItem(this.localKey,JSON.stringify(this.timer));}else localStorage.removeItem(this.localKey);}catch{new Notice('无法保存本机计时状态，请检查存储空间');}}
+ async startTimer(task){if(this.timer){new Notice('请先结束当前计时，再开始另一个任务');return;}this.timer={id:C.uid(),taskId:task?.id||null,title:task?.title||'自由专注',accumulated:0,runningSince:Date.now(),segments:[],startedAt:Date.now()};this.persistTimer();this.refresh();}
+ async toggleTimer(){if(!this.timer||this.finishing)return;const now=Date.now();if(this.timer.runningSince!=null){this.timer.accumulated=C.elapsed(this.timer,now);this.timer.segments.push({start:this.timer.runningSince,end:now});this.timer.runningSince=null;}else this.timer.runningSince=now;this.persistTimer();this.refresh();}
+ async finishTimer(){if(!this.timer||this.finishing)return;this.finishing=true;try{if(this.timer.runningSince!=null){const now=Date.now();this.timer.accumulated=C.elapsed(this.timer,now);this.timer.segments.push({start:this.timer.runningSince,end:now});this.timer.runningSince=null;this.persistTimer();}this.refresh();const record={id:this.timer.id,title:this.timer.title,taskId:this.timer.taskId,segments:clone(this.timer.segments),duration:this.timer.accumulated,endedAt:Date.now()};await this.store.saveSession(record);this.timer=null;this.persistTimer();new Notice('专注记录已保存到时间轴');}finally{this.finishing=false;this.refresh();}}
+ reviewTimer(cutoff){
+  if(!this.timer||this.recovering)return;this.recovering=true;const t=this.timer,wasRunning=t.runningSince!=null,now=Date.now();
+  if(wasRunning){const end=Math.max(t.runningSince,Math.min(cutoff,now));t.accumulated=C.elapsed(t,end);t.segments.push({start:t.runningSince,end});t.runningSince=null;this.persistTimer();}
+  const modal=new SimpleModal(this,'恢复上次专注',(root,m)=>{V.el(root,'p','',`任务：${t.title}，已记录 ${C.duration(t.accumulated)}。当前已暂停。`);
+   if(wasRunning){V.el(root,'p','td-muted','是否计入离开应用期间的时间？');V.button(root,'计入并继续',()=>{if(this.timer!==t)return m.close();const start=Math.max(cutoff,t.startedAt);t.segments.push({start,end:now});t.accumulated+=Math.max(0,now-start);t.runningSince=Date.now();this.persistTimer();this.refresh();m.close();},'mod-cta');}
+   V.button(root,'保持暂停',()=>{this.refresh();m.close();});V.button(root,'结束并保存',()=>this.run(async()=>{await this.finishTimer();m.close();}));
+  });const baseClose=modal.onClose.bind(modal);modal.onClose=()=>{this.recovering=false;baseClose();this.refresh();};modal.open();
+ }
+}
+module.exports=TodoPlugin;
