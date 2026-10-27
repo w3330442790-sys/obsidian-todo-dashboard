@@ -47,7 +47,10 @@ class DashboardView extends ItemView{
  async onOpen(){this.plugin.views.add(this);this.render();}
  async onClose(){this.plugin.views.delete(this);}
  go(page){this.state.page=page;this.render();}
- render(){V.render(this);}
+ render(){
+  if(this.plugin.ready===false){const host=this.contentEl;host.replaceChildren();host.classList.add('td-host');const box=V.el(host,'div','td-main');V.heading(box,'TODO WORKSPACE',this.plugin.initError?'工作台暂未加载完成':'正在加载工作台…',this.plugin.initError||'等待笔记库就绪');if(this.plugin.initError)V.button(box,'重试加载',()=>this.plugin.run(()=>this.plugin.initializeData()),'mod-cta');return;}
+  V.render(this);
+ }
 }
 class SettingsTab extends PluginSettingTab{
  constructor(app,p){super(app,p);this.p=p;}
@@ -55,13 +58,9 @@ class SettingsTab extends PluginSettingTab{
 }
 class TodoPlugin extends Plugin{
  async onload(){
-  this.views=new Set();this.local=(await this.loadData())||{};
-  this.local.root=validRoot(this.local.root)?this.local.root:'Todo工作台';this.registerView(VIEW,leaf=>new DashboardView(leaf,this));
-  this.store=new Store(this.app.vault,this.local.root);await this.store.load();
-  if(!this.store.paths.has('settings:settings')){
-   const settingsPath=this.store.root+'/设置.md';
-   if(!this.app.vault.getAbstractFileByPath(settingsPath))await this.store.saveSettings(clone(DEFAULTS));
-  }
+  this.views=new Set();this.ready=false;this.local=(await this.loadData())||{};
+  this.local.root=validRoot(this.local.root)?this.local.root:'Todo工作台';
+  this.store=new Store(this.app.vault,this.local.root);this.registerView(VIEW,leaf=>new DashboardView(leaf,this));
   this.timer=null;this.localKey=`todo-dashboard:timer:${this.app.vault.getName()}:${this.local.root}`;
   try{this.timer=JSON.parse(localStorage.getItem(this.localKey)||'null');}catch{new Notice('计时恢复数据损坏，请检查本机存储');}
   if(this.timer&&(!Array.isArray(this.timer.segments)||typeof this.timer.accumulated!=='number'))this.timer=null;
@@ -75,13 +74,24 @@ class TodoPlugin extends Plugin{
   this.registerEvent(this.app.metadataCache.on('changed',()=>this.scheduleRender()));
   this.registerInterval(globalThis.setInterval(()=>{for(const view of this.views)for(const e of view.contentEl.querySelectorAll('[data-timer]'))e.textContent=C.duration(this.timer?C.elapsed(this.timer):0);},1000));
   this.registerDomEvent(document,'visibilitychange',()=>{if(document.hidden){this.hiddenAt=Date.now();this.persistTimer();}else{const gap=this.hiddenAt?Date.now()-this.hiddenAt:0;if(gap>60000&&this.timer?.runningSince!=null)this.reviewTimer(this.hiddenAt);else this.refresh();this.hiddenAt=null;}});
-  this.app.workspace.onLayoutReady(()=>{this.run(async()=>{await this.repairRepeats();if(this.local.autoOpen!==false)await this.open();if(this.timer)this.reviewTimer(this.timer.savedAt||Date.now());});});
+  this.app.workspace.onLayoutReady(()=>this.run(async()=>{await this.initializeData();if(this.local.autoOpen!==false)await this.open();if(this.timer)this.reviewTimer(this.timer.savedAt||Date.now());}));
+ }
+ async initializeData(){
+  if(this.initializing)return this.initializing;
+  this.initError=null;
+  this.initializing=(async()=>{
+   await this.store.load();
+   const settingsPath=this.store.root+'/设置.md';
+   if(!this.store.paths.has('settings:settings')&&!this.app.vault.getAbstractFileByPath(settingsPath)&&!await this.app.vault.adapter?.exists?.(settingsPath))await this.store.saveSettings(clone(DEFAULTS));
+   await this.repairRepeats();this.ready=true;this.refresh();
+  })().catch(error=>{this.initError=error.message;this.refresh();throw error;}).finally(()=>{this.initializing=null;});
+  return this.initializing;
  }
  onunload(){clearTimeout(this.reloadHandle);clearTimeout(this.renderHandle);this.persistTimer();}
  async run(fn){try{return await fn();}catch(e){console.error('[Todo 工作台]',e);new Notice('操作未完成：'+e.message,8000);}}
  refresh(){for(const v of this.views)v.render();}
  scheduleRender(){clearTimeout(this.renderHandle);this.renderHandle=setTimeout(()=>this.refresh(),400);}
- scheduleReload(){clearTimeout(this.reloadHandle);this.reloadHandle=setTimeout(()=>this.run(()=>this.reload()),350);}
+ scheduleReload(){if(this.ready===false)return;clearTimeout(this.reloadHandle);this.reloadHandle=setTimeout(()=>this.run(()=>this.reload()),350);}
  async reload(){await this.store.load();await this.repairRepeats();this.refresh();}
  async repairRepeats(){
   for(const task of [...this.store.tasks.values()]){
@@ -102,8 +112,8 @@ class TodoPlugin extends Plugin{
  list(id){return (this.store.settings.lists||[]).find(l=>l.id===id);}
  notes(){return this.app.vault.getMarkdownFiles().filter(f=>!f.path.startsWith(this.store.root+'/'));}
  noteTags(file){const cache=this.app.metadataCache.getFileCache(file);return cache?(getAllTags(cache)||[]):[];}
- editTask(task,seed={}){new TaskModal(this,task,seed).open();}
- async saveTask(task,token){await this.store.saveTask({...task,updatedAt:new Date().toISOString()},token);this.refresh();}
+ editTask(task,seed={}){if(this.ready===false){new Notice('工作台正在等待笔记库加载，请稍后重试');return;}new TaskModal(this,task,seed).open();}
+ async saveTask(task,token){if(this.ready===false)throw Error('笔记库尚未加载完成');await this.store.saveTask({...task,updatedAt:new Date().toISOString()},token);this.refresh();}
  async toggleTask(task){
   const current=this.store.tasks.get(task.id);if(!current)return;
   if(current.status==='done'){

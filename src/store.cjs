@@ -2,7 +2,17 @@
 const {encodeRecord,decodeRecord}=require('./core.cjs');
 class Store{
  constructor(vault,root){this.vault=vault;this.root=root;this.tasks=new Map();this.sessions=new Map();this.settings={};this.snapshots=new Map();this.paths=new Map();this.errors=[];this.queue=Promise.resolve();}
- async folders(){let path='';for(const part of this.root.split('/')){path=path?path+'/'+part:part;if(!this.vault.getAbstractFileByPath(path)){try{await this.vault.createFolder(path);}catch(e){if(!this.vault.getAbstractFileByPath(path))throw e;}}}for(const sub of ['tasks','sessions']){const p=this.root+'/'+sub;if(!this.vault.getAbstractFileByPath(p)){try{await this.vault.createFolder(p);}catch(e){if(!this.vault.getAbstractFileByPath(p))throw e;}}}}
+ async ensureFolder(path){
+  const cached=this.vault.getAbstractFileByPath(path);
+  if(cached){if(!Array.isArray(cached.children))throw Error('数据目录被同名文件占用：'+path);return;}
+  const onDisk=await this.vault.adapter?.stat?.(path);
+  if(onDisk){if(onDisk.type!=='folder')throw Error('数据目录被同名文件占用：'+path);return;}
+  try{await this.vault.createFolder(path);}catch(error){
+   const found=this.vault.getAbstractFileByPath(path),stat=await this.vault.adapter?.stat?.(path);
+   if(!Array.isArray(found?.children)&&stat?.type!=='folder')throw error;
+  }
+ }
+ async folders(){let path='';for(const part of this.root.split('/')){path=path?path+'/'+part:part;await this.ensureFolder(path);}for(const sub of ['tasks','sessions'])await this.ensureFolder(this.root+'/'+sub);}
  enqueue(fn){const next=this.queue.then(fn);this.queue=next.catch(()=>{});return next;}
  async load(){return this.enqueue(async()=>{
   const tasks=new Map(),sessions=new Map(),paths=new Map(),snapshots=new Map(),errors=[];let settings={};
