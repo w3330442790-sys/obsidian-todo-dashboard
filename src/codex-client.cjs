@@ -175,7 +175,7 @@ class CodexClient {
     return this.request(threadId ? 'thread/resume' : 'thread/start', params);
   }
   async send(text, options = {}) { return this.startTurn(text, options); }
-  async startTurn(text, { threadId, mode = 'readOnly', model } = {}) {
+  async startTurn(text, { threadId, mode = 'readOnly', model, images = [] } = {}) {
     this._mode(mode);
     if (typeof text !== 'string' || !text.trim()) throw new TypeError('Message is empty');
     if (typeof threadId !== 'string' || !threadId) throw new TypeError('threadId is required');
@@ -183,7 +183,8 @@ class CodexClient {
       type: 'workspaceWrite', writableRoots: [this.cwd], networkAccess: false,
       excludeTmpdirEnvVar: true, excludeSlashTmp: true
     };
-    const params = { threadId, cwd: this.cwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandboxPolicy, input: [{ type: 'text', text, text_elements: [] }] };
+    if (!Array.isArray(images) || images.length > 12 || images.some(p => typeof p !== 'string' || !path.isAbsolute(p) || p.includes('\0') || path.relative(this.cwd,p).startsWith('..'))) throw new TypeError('Image paths must be inside the vault (maximum 12)');
+    const params = { threadId, cwd: this.cwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandboxPolicy, input: [{ type: 'text', text, text_elements: [] }, ...images.map(p => ({ type: 'localImage', path:p }))] };
     if (model) params.model = model;
     return this.request('turn/start', params);
   }

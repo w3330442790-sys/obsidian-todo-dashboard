@@ -1,7 +1,7 @@
 'use strict';
 const {Plugin,ItemView,Modal,Notice,PluginSettingTab,getAllTags,Platform,requestUrl}=require('obsidian');
 const C=require('./core.cjs');const {Store}=require('./store.cjs');const V=require('./views.cjs');
-const D=require('./dashboard.cjs');const A=require('./assistant.cjs');
+const D=require('./dashboard.cjs');const A=require('./assistant.cjs');const R=require('./reflection.cjs');const {JournalStore}=require('./journal.cjs');const {CourseService}=require('./course.cjs');const {XftjBridge}=require('./xftj-bridge.cjs');const {GenerationRunner}=require('./generation.cjs');const {DocumentReader}=require('./documents.cjs');
 const VIEW='todo-dashboard-view';
 const DEFAULTS={lists:[{id:'study',name:'学习',color:'#149e9a'},{id:'work',name:'工作',color:'#6488d8'},{id:'life',name:'生活',color:'#d58c48'}],stats:[],recentSort:'modified',excludedFolders:[]};
 function clone(o){return JSON.parse(JSON.stringify(o));}
@@ -46,10 +46,10 @@ class DashboardView extends ItemView{
  constructor(leaf,p){super(leaf);this.plugin=p;this.state={page:'home',month:C.localDate().slice(0,7),selectedDate:C.localDate(),timelineDate:C.localDate(),list:'',showDone:false,query:''};}
  getViewType(){return VIEW;}getDisplayText(){return '从容 · Todo 工作台';}getIcon(){return 'layout-dashboard';}
  async onOpen(){this.plugin.views.add(this);this.render();}
- async onClose(){this.plugin.interacting=false;this.plugin.assistant?.unsubscribe(this);this.plugin.views.delete(this);if(this.plugin.pendingRefresh)this.plugin.refresh();}
- go(page){this.state.page=page;this.render();}
+ async onClose(){this.layoutCleanup?.();this.plugin.interacting=false;this.plugin.assistant?.unsubscribe(this);this.plugin.views.delete(this);if(this.plugin.pendingRefresh)this.plugin.refresh();}
+ go(page){if(page==='courses'&&!this.state.course?.busy&&this.state.course)this.state.course.courses=null;this.state.page=page;this.render();}
  render(){
-  this.plugin.interacting=false;
+  this.layoutCleanup?.();this.plugin.interacting=false;
   this.plugin.assistant?.unsubscribe(this);
   if(this.plugin.ready===false){const host=this.contentEl;host.replaceChildren();host.classList.add('td-host');const box=V.el(host,'div','td-main');V.heading(box,'TODO WORKSPACE',this.plugin.initError?'工作台暂未加载完成':'正在加载工作台…',this.plugin.initError||'等待笔记库就绪');if(this.plugin.initError)V.button(box,'重试加载',()=>this.plugin.run(()=>this.plugin.initializeData()),'mod-cta');return;}
   V.render(this);
@@ -57,7 +57,7 @@ class DashboardView extends ItemView{
 }
 class SettingsTab extends PluginSettingTab{
  constructor(app,p){super(app,p);this.p=p;}
- display(){this.containerEl.replaceChildren();V.heading(this.containerEl,'TODO WORKSPACE','Todo 工作台');V.el(this.containerEl,'p','','任务和专注记录保存在普通笔记库文件中。请将数据目录纳入 EasySync，两端均需安装插件。');V.button(this.containerEl,'打开偏好设置',()=>this.p.preferences(),'mod-cta');V.el(this.containerEl,'p','td-muted','当前数据目录：'+this.p.store.root);}
+ display(){this.containerEl.replaceChildren();V.heading(this.containerEl,'TODO WORKSPACE','Todo 工作台');V.el(this.containerEl,'p','','任务和专注记录保存在普通笔记库文件中。请将 Todo工作台 与 课程笔记 两个目录纳入 EasySync，两端均需安装插件。');V.button(this.containerEl,'打开偏好设置',()=>this.p.preferences(),'mod-cta');V.el(this.containerEl,'p','td-muted','当前数据目录：'+this.p.store.root);}
 }
 class TodoPlugin extends Plugin{
  async onload(){
@@ -66,16 +66,22 @@ class TodoPlugin extends Plugin{
   this.store=new Store(this.app.vault,this.local.root);this.registerView(VIEW,leaf=>new DashboardView(leaf,this));
   this.timer=null;this.localKey=`todo-dashboard:timer:${this.app.vault.getName()}:${this.local.root}`;
   this.assistant=new A.AssistantController(this,{desktop:!!Platform?.isDesktopApp});this.layoutDevice=Platform?.isDesktopApp?'desktop':'tablet';this.galleryCredits=new Map();
+  this.journal=new JournalStore(this.app.vault,this.store.root,path=>this.store.ensureFolder(path));
+  let xftj={};try{xftj=JSON.parse(localStorage.getItem(this.localKey+':xftj')||'{}');}catch{}this.xftjSettings=xftj;
+  this.courseBridge=Platform?.isDesktopApp?new XftjBridge({script:xftj.script,python:xftj.python||'python'}):null;
+  this.courses=new CourseService({vault:this.app.vault,ensureFolder:path=>this.store.ensureFolder(path),generate:(prompt,options)=>this.generateJob(prompt,options),bridge:this.courseBridge,reader:Platform?.isDesktopApp?new DocumentReader():null});
   try{this.timer=JSON.parse(localStorage.getItem(this.localKey)||'null');}catch{new Notice('计时恢复数据损坏，请检查本机存储');}
   if(this.timer&&(!Array.isArray(this.timer.segments)||typeof this.timer.accumulated!=='number'))this.timer=null;
   this.addRibbonIcon('layout-dashboard','打开 Todo 首页',()=>this.open());
   this.addCommand({id:'open-dashboard',name:'打开首页仪表盘',callback:()=>this.open()});
   this.addCommand({id:'open-calendar',name:'打开日程概览',callback:()=>this.open('calendar')});
+  this.addCommand({id:'open-courses',name:'打开课程录音与习题整理',callback:()=>this.open('courses')});
+  this.addCommand({id:'open-journal',name:'打开灵感与复盘',callback:()=>this.open('journal')});
   this.addCommand({id:'open-codex',name:'打开 Codex 笔记助手',callback:()=>this.open('assistant')});
   this.addCommand({id:'new-task',name:'新建任务',callback:()=>this.editTask(null,{date:C.localDate()})});
   this.addCommand({id:'toggle-focus',name:'开始 / 暂停 / 继续专注',callback:()=>this.run(()=>this.timer?this.toggleTimer():this.startTimer(null))});
   this.addSettingTab(new SettingsTab(this.app,this));
-  for(const event of ['create','modify','delete','rename'])this.registerEvent(this.app.vault.on(event,(file,oldPath)=>{if(file.path.startsWith(this.store.root+'/')||oldPath?.startsWith(this.store.root+'/'))this.scheduleReload(file);else if(file.extension==='md')this.scheduleRender();}));
+  for(const event of ['create','modify','delete','rename'])this.registerEvent(this.app.vault.on(event,(file,oldPath)=>{if(file.path.startsWith(this.store.root+'/')||oldPath?.startsWith(this.store.root+'/')||file.path.startsWith(this.courses.root+'/')||oldPath?.startsWith(this.courses.root+'/'))this.scheduleReload(file);else if(file.extension==='md')this.scheduleRender();}));
   this.registerEvent(this.app.metadataCache.on('changed',file=>{if(!file?.path?.startsWith(this.store.root+'/'))this.scheduleRender();}));
   this.registerInterval(globalThis.setInterval(()=>this.tick(),1000));
   this.registerDomEvent(document,'visibilitychange',()=>{if(document.hidden){this.hiddenAt=Date.now();this.persistTimer();}else{const gap=this.hiddenAt?Date.now()-this.hiddenAt:0;if(gap>60000&&this.timer?.runningSince!=null)this.reviewTimer(this.hiddenAt);else this.refresh();this.hiddenAt=null;}});
@@ -85,20 +91,20 @@ class TodoPlugin extends Plugin{
   if(this.initializing)return this.initializing;
   this.initError=null;
   this.initializing=(async()=>{
-   await this.store.load();
+   await this.store.load();await this.journal.load();
    const settingsPath=this.store.root+'/设置.md';
    if(!this.store.paths.has('settings:settings')&&!this.app.vault.getAbstractFileByPath(settingsPath)&&!await this.app.vault.adapter?.exists?.(settingsPath))await this.store.saveSettings(clone(DEFAULTS));
    await this.repairRepeats();await this.loadGalleryCredits();this.ready=true;this.refresh();
   })().catch(error=>{this.initError=error.message;this.refresh();throw error;}).finally(()=>{this.initializing=null;});
   return this.initializing;
  }
- onunload(){clearTimeout(this.reloadHandle);clearTimeout(this.renderHandle);this.assistant?.close();this.persistTimer();}
+ onunload(){this.jobAbort?.abort();for(const view of this.views)view.layoutCleanup?.();clearTimeout(this.reloadHandle);clearTimeout(this.renderHandle);this.assistant?.close();this.persistTimer();}
  async run(fn){try{return await fn();}catch(e){console.error('[Todo 工作台]',e);new Notice('操作未完成：'+e.message,8000);}}
  refresh(){if(this.interacting){this.pendingRefresh=true;return;}this.pendingRefresh=false;for(const v of this.views)v.render();}
- tick(today=C.localDate()){if(this.lastDay!==today){this.lastDay=today;this.refresh();}for(const view of this.views)for(const e of view.contentEl.querySelectorAll('[data-timer]'))e.textContent=C.duration(this.timer?C.elapsed(this.timer):0);}
+ tick(today=C.localDate()){if(this.lastDay!==today){this.lastDay=today;this.refresh();}for(const view of this.views){for(const e of view.contentEl.querySelectorAll('[data-timer]'))e.textContent=C.duration(this.timer?C.elapsed(this.timer):0);const totals=R.focusTotals([...(this.store.sessions?.values()||[])],this.timer);for(const e of view.contentEl.querySelectorAll('[data-focus-total]'))e.textContent=C.duration(totals[e.dataset.focusTotal]||0);}}
  scheduleRender(){clearTimeout(this.renderHandle);this.renderHandle=setTimeout(()=>this.refresh(),400);}
  scheduleReload(file){if(this.ready===false)return;if(file&&file.extension!=='md')this.assetDirty=true;clearTimeout(this.reloadHandle);this.reloadHandle=setTimeout(()=>this.run(()=>this.reload()),350);}
- async reload(){const fingerprint=()=>JSON.stringify([...(this.store.snapshots||[])].sort((a,b)=>a[0].localeCompare(b[0])))+JSON.stringify(this.store.errors);const before=fingerprint();await this.store.load();await this.repairRepeats();await this.loadGalleryCredits();if(before!==fingerprint()||this.assetDirty){this.assetDirty=false;this.refresh();}}
+ async reload(){const fingerprint=()=>JSON.stringify([...(this.store.snapshots||[])].sort((a,b)=>a[0].localeCompare(b[0])))+JSON.stringify(this.store.errors)+JSON.stringify([...(this.journal?.snapshots||[])])+JSON.stringify(this.journal?.errors);const before=fingerprint();await this.store.load();await this.journal?.load();await this.repairRepeats();await this.loadGalleryCredits();if(before!==fingerprint()||this.assetDirty){this.assetDirty=false;this.refresh();}}
  async repairRepeats(){
   for(const task of [...this.store.tasks.values()]){
    if(task.deleted||task.status!=='done'||!task.completedAt||task.repeatIssued)continue;
@@ -128,6 +134,8 @@ class TodoPlugin extends Plugin{
   }else{const result=C.completeTask(current);await this.saveTask(result.task);const revision=this.store.token?.('task',current.id);if(result.next){await this.store.ensureTask(result.next);await this.saveTask({...result.task,repeatIssued:true},revision);}}
   this.refresh();
  }
+ async generateJob(prompt,{images=[],signal}={}){if(!this.assistant?.desktop)throw Error('Codex 自动整理请在 Windows 电脑使用');if(this.jobBusy||this.assistant.state.busy)throw Error('Codex 正在处理其他请求，请先等待或停止');this.jobBusy=true;const controller=new AbortController(),abort=()=>controller.abort();this.jobAbort=controller;signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)controller.abort();try{const executable=this.assistant.state.executable||A.findExecutable(),cwd=this.app.vault.adapter.getBasePath?.();if(!executable||!cwd)throw Error('请先在 Codex 连接设置检查本机 CLI 和笔记库目录');return await new GenerationRunner({executable,cwd,model:this.assistant.state.model}).run(prompt,{images,signal:controller.signal});}finally{signal?.removeEventListener('abort',abort);this.jobBusy=false;this.jobAbort=null;}}
+ coursePreferences(){new SimpleModal(this,'讯飞听见本机连接',(root,m)=>{V.el(root,'p','td-muted','使用本机 xftj-transcribe 工具和官方授权。凭据不写入笔记库；仅列出录音并读取已有稿，不发起付费转写。');const script=formField(root,'xftj.py 完整路径（留空自动查找）','text',this.xftjSettings.script||'');const python=formField(root,'Python 可执行文件或完整路径','text',this.xftjSettings.python||'python');V.button(root,'保存讯飞连接设置',()=>{if(this.views.size&&[...this.views].some(v=>v.state.course?.busy)){new Notice('请先停止课程操作');return;}this.xftjSettings={script:script.value.trim(),python:python.value.trim()||'python'};localStorage.setItem(this.localKey+':xftj',JSON.stringify(this.xftjSettings));this.courseBridge=new XftjBridge(this.xftjSettings);this.courses.bridge=this.courseBridge;m.close();this.refresh();},'mod-cta');}).open();}
  async updateSettings(patch,token){await this.store.saveSettings({...this.store.settings,...patch},token);if(patch.gallery)await this.loadGalleryCredits();this.refresh();}
  galleryFolder(){return this.store.settings.gallery?.folder||this.store.root+'/风景图库';}
  galleryFiles(){const folder=this.galleryFolder();const fixed=this.store.settings.gallery?.fixedFile;return this.app.vault.getFiles().filter(f=>(f.path.startsWith(folder+'/')||f.path===fixed)&&/\.(jpe?g|png|webp)$/i.test(f.path));}
@@ -175,12 +183,12 @@ class TodoPlugin extends Plugin{
   V.button(root,'添加统计',async()=>{try{const v=value.value.trim().replace(/^\/+|\/+$/g,'');if(!v)throw Error('请输入文件夹或标签');await this.updateSettings({stats:[...(this.store.settings.stats||[]),{id:C.uid(),kind:kind.value,value:v}]},token);m.close();}catch(e){error.textContent=e.message;}},'mod-cta');
  }).open();}
  showNotes(title,notes){new SimpleModal(this,title,(root)=>{if(!notes.length)V.empty(root,'没有匹配的笔记');for(const f of notes)V.button(root,f.path,()=>this.app.workspace.openLinkText(f.path,'',false),'td-note');}).open();}
- showErrors(){new SimpleModal(this,'需要检查的数据文件',root=>{for(const e of this.store.errors){V.el(root,'p','td-error',e.path+'：'+e.message);V.button(root,'打开文件',()=>this.app.workspace.openLinkText(e.path,'',false),'td-link');}}).open();}
+ showErrors(){new SimpleModal(this,'需要检查的数据文件',root=>{for(const e of [...this.store.errors,...(this.journal?.errors||[]),...(this.courses?.errors||[])]){V.el(root,'p','td-error',e.path+'：'+e.message);V.button(root,'打开文件',()=>this.app.workspace.openLinkText(e.path,'',false),'td-link');}}).open();}
  preferences(){const token=this.store.token('settings','settings');new SimpleModal(this,'偏好设置',(root,m)=>{
   const auto=V.el(root,'label','td-toggle'),check=V.el(auto,'input','');check.type='checkbox';check.checked=this.local.autoOpen!==false;V.el(auto,'span','','启动时自动进入首页');
   const excludes=formField(root,'最近笔记排除文件夹（每行一个）','textarea',(this.store.settings.excludedFolders||[]).join('\n'));
   V.el(root,'p','td-muted','数据目录：'+this.store.root+'。此目录中的数据笔记自动排除于笔记统计和最近笔记。');
-  V.el(root,'p','td-muted','EasySync：请同步整个数据目录。运行中计时器保留在本机，结束后专注记录参与同步。');
+  V.el(root,'p','td-muted','EasySync：请同步整个数据目录及课程笔记/。运行中计时器保留在本机，结束后专注记录参与同步。');
   const error=V.el(root,'p','td-error');V.button(root,'保存设置',async()=>{try{await this.updateSettings({excludedFolders:excludes.value.split('\n').map(s=>s.trim().replace(/\/$/,'')).filter(Boolean)},token);this.local.autoOpen=check.checked;await this.saveData(this.local);m.close();}catch(e){error.textContent=e.message;}},'mod-cta');
  }).open();}
  persistTimer(){try{if(this.timer){this.timer.savedAt=Date.now();localStorage.setItem(this.localKey,JSON.stringify(this.timer));}else localStorage.removeItem(this.localKey);}catch{new Notice('无法保存本机计时状态，请检查存储空间');}}
