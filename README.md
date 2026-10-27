@@ -1,10 +1,10 @@
 # 从容 · Todo 工作台
 
-Obsidian 插件，当前测试版 0.3.0。一个插件提供首页仪表盘、待办日程、灵感复盘和课程整理，支持 Windows 与安卓界面布局。数据存储于普通库文件夹，便于 EasySync 同步。
+Obsidian 插件，当前测试版 0.3.1。一个插件提供首页仪表盘、待办日程、灵感复盘和课程整理，支持 Windows 与安卓界面布局。数据存储于普通库文件夹，便于 EasySync 同步。
 
 ## 安装本地测试版
 
-1. 解压 `release/todo-dashboard-0.3.0.zip`，得到 `todo-dashboard` 文件夹。
+1. 解压 `release/todo-dashboard-0.3.1.zip`，得到 `todo-dashboard` 文件夹。
 2. 将该文件夹放到你的笔记库 `.obsidian/plugins/` 下，最终应有 `.obsidian/plugins/todo-dashboard/main.js`、`manifest.json` 和 `styles.css`。
 3. 在 Obsidian 设置 → 第三方插件中关闭受限模式，刷新插件列表并启用 **Todo 工作台**。
 4. 点击侧栏仪表盘按钮，或命令面板运行 **Todo 工作台：打开首页仪表盘**。重新打开 Obsidian 后默认进入首页。
@@ -13,6 +13,11 @@ Obsidian 插件，当前测试版 0.3.0。一个插件提供首页仪表盘、�
 
 ## 功能
 
+0.3.1 默认使用紧凑首页：顶部 120px 风景与短统计条，桌面两行 5/4/3 卡片，平板按可用宽度两栏、窄屏单栏。1440px 隔离桌面测试中，首页主体底部约 855px。最近笔记默认 5 行可见，更多内容内部滚动；字体保持可读尺寸，不依靠整页缩放。
+
+首页仅保留灵感即时输入、专注控制、任务列表和复盘/助手摘要。点击 **写复盘 / AI 复盘** 打开完整日期、材料及编辑器；点击 **打开对话** 进入完整聊天，已有草稿/会话在这些页面切换间保留，摘要入口不会自行触发模型任务。
+
+升级时备份原模块排列、尺寸及风景设置，应用新的紧凑预设。首页 **布局与外观 → 恢复之前布局** 可还原；在旧模式中再做调整、重新切入紧凑模式时，会备份刚修改的设置。重复应用当前紧凑预设不会覆盖该备份。所有任务、专注、灵感、复盘及课程数据不变。
 - 顶部导航：首页、待办与日程、灵感与复盘、课程整理、Codex 助手。待办同页切换列表/月历/四象限/时间轴，分类与回收站收拢。
 - 紧凑专注卡：本次正计时、暂停/继续、今日/本周/使用以来总时长。暂停不累计，保存期间按 ID 去重，累计值由历史记录重算。
 - 灵感速记：输入想法、感受或灵感，保存为普通 Markdown，正文可直接在 Obsidian 编辑。
@@ -65,7 +70,7 @@ EasySync 中将 `Todo工作台/` 和 `课程笔记/` 两个目录纳入同步，
 
 ## 每日风景与布局
 
-首页 → 风景与布局设置 → 下载精选风景图库。也可以把 Release 中的图库 ZIP 解压，将其中 `Todo工作台/风景图库/` 合并到库中，或用设置里的文件选择器导入自己的 JPG/PNG/WebP。原有同名照片不会被自动覆盖。不要删除 `SOURCE_LICENSES.md/json`，它们记录署名及许可。横幅上的署名入口可以打开来源清单。
+首页 → 布局与外观 → 风景与布局设置 → 下载精选风景图库。也可以把 Release 中的图库 ZIP 解压，将其中 `Todo工作台/风景图库/` 合并到库中，或用设置里的文件选择器导入自己的 JPG/PNG/WebP。原有同名照片不会被自动覆盖。不要删除 `SOURCE_LICENSES.md/json`，它们记录署名及许可。横幅上的署名入口可以打开来源清单。
 
 默认按本地日期在本地图像之间轮换；同一天不会因为刷新随机变化。隐藏、横幅高度、图库文件夹、固定图片均可设置。Android 和 Windows 均读取库内文件，照片通过 EasySync 同步；运行插件不需要每天访问图片网站。
 
@@ -115,13 +120,13 @@ Windows 通过本机 `xftj-transcribe` 工具接入：默认查找 `~/.codex/ski
 w3330442790-sys/obsidian-todo-dashboard
 ```
 
-选择 `0.3.0` 或最新版本，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
+选择 `0.3.1` 或最新版本，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
 
 维护者发布新版本的步骤：
 
 1. 仓库包含源码和根目录 `manifest.json`。
 2. 执行 `npm test` 和 `npm run build`。
-3. 创建版本标签及 Release `0.3.0`，上传 `dist/main.js`、`dist/manifest.json`、`dist/styles.css` 为独立附件。
+3. 创建版本标签及 Release `0.3.1`，上传 `dist/main.js`、`dist/manifest.json`、`dist/styles.css` 为独立附件。
 4. 两端 BRAT → Add beta plugin，填入 `用户名/仓库名` 安装。
 
 `manifest.json` 版本与 Release 标签保持一致。可参考 [BRAT 开发者指南](https://github.com/TfTHacker/obsidian42-brat/blob/main/BRAT-DEVELOPER-GUIDE.md)。BRAT 负责更新程序；EasySync 负责同步普通库数据。
@@ -137,6 +142,6 @@ npm run build
 
 `scripts/ui-test.cjs` 为浏览器隔离测试，需通过 `PLAYWRIGHT_PATH` 指定已安装的 Playwright，并可通过 `BROWSER_PATH` 指定浏览器。它使用内存 Vault 和模拟 Obsidian API，不读取用户笔记、不连接任何云服务。截图及报告存放 `artifacts/`。
 
-已验证：84 项自动测试、30 项隔离浏览器交互检查、生产打包；本机讯飞读取已有转写、Codex 独立只读课程 JSON 草稿、合成 PDF 正文/含图页提取与真实模型图像读取。0.1.1 已在 Windows Obsidian 1.14.5 验证重载后样式恢复；0.3.0 最终原生界面重载、真实安卓硬件、EasySync 双端传输和冲突处理仍需按 `ACCEPTANCE.md` 验收。
+已验证：93 项自动测试、34 项隔离浏览器交互检查、生产打包；本机讯飞读取已有转写、Codex 独立只读课程 JSON 草稿、合成 PDF 正文/含图页提取与真实模型图像读取。0.1.1 已在 Windows Obsidian 1.14.5 验证重载后样式恢复；0.3.1 最终原生界面重载、真实安卓硬件、EasySync 双端传输和冲突处理仍需按 `ACCEPTANCE.md` 验收。
 
 首版是独立待办系统，不读取或同步原 Todo清单账号。

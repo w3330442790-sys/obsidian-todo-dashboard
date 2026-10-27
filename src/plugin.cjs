@@ -45,8 +45,9 @@ class SimpleModal extends Modal{
 class DashboardView extends ItemView{
  constructor(leaf,p){super(leaf);this.plugin=p;this.state={page:'home',month:C.localDate().slice(0,7),selectedDate:C.localDate(),timelineDate:C.localDate(),list:'',showDone:false,query:''};}
  getViewType(){return VIEW;}getDisplayText(){return '从容 · Todo 工作台';}getIcon(){return 'layout-dashboard';}
- async onOpen(){this.plugin.views.add(this);this.render();}
- async onClose(){this.layoutCleanup?.();this.plugin.interacting=false;this.plugin.assistant?.unsubscribe(this);this.plugin.views.delete(this);if(this.plugin.pendingRefresh)this.plugin.refresh();}
+ getLayoutTier(){const width=this.contentEl.clientWidth;return width<=650?'narrow':width<1100?'middle':'wide';}
+ async onOpen(){this.plugin.views.add(this);this.layoutTier=this.getLayoutTier();const Observer=this.contentEl.ownerDocument?.defaultView?.ResizeObserver;if(Observer){this.resizeObserver=new Observer(()=>{const tier=this.getLayoutTier();if(tier!==this.layoutTier){this.layoutTier=tier;if(this.plugin.interacting)this.plugin.pendingRefresh=true;else this.render();}});this.resizeObserver.observe(this.contentEl);}this.render();}
+ async onClose(){this.resizeObserver?.disconnect();this.layoutCleanup?.();this.plugin.interacting=false;this.plugin.assistant?.unsubscribe(this);this.plugin.views.delete(this);if(this.plugin.pendingRefresh)this.plugin.refresh();}
  go(page){if(page==='courses'&&!this.state.course?.busy&&this.state.course)this.state.course.courses=null;this.state.page=page;this.render();}
  render(){
   this.layoutCleanup?.();this.plugin.interacting=false;
@@ -94,6 +95,7 @@ class TodoPlugin extends Plugin{
    await this.store.load();await this.journal.load();
    const settingsPath=this.store.root+'/设置.md';
    if(!this.store.paths.has('settings:settings')&&!this.app.vault.getAbstractFileByPath(settingsPath)&&!await this.app.vault.adapter?.exists?.(settingsPath))await this.store.saveSettings(clone(DEFAULTS));
+   if(!this.store.errors.some(e=>e.path===settingsPath)){const compact=D.migrateCompactSettings(this.store.settings);if(compact!==this.store.settings)await this.store.saveSettings(compact,this.store.token('settings','settings'));}
    await this.repairRepeats();await this.loadGalleryCredits();this.ready=true;this.refresh();
   })().catch(error=>{this.initError=error.message;this.refresh();throw error;}).finally(()=>{this.initializing=null;});
   return this.initializing;
@@ -136,6 +138,8 @@ class TodoPlugin extends Plugin{
  }
  async generateJob(prompt,{images=[],signal}={}){if(!this.assistant?.desktop)throw Error('Codex 自动整理请在 Windows 电脑使用');if(this.jobBusy||this.assistant.state.busy)throw Error('Codex 正在处理其他请求，请先等待或停止');this.jobBusy=true;const controller=new AbortController(),abort=()=>controller.abort();this.jobAbort=controller;signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)controller.abort();try{const executable=this.assistant.state.executable||A.findExecutable(),cwd=this.app.vault.adapter.getBasePath?.();if(!executable||!cwd)throw Error('请先在 Codex 连接设置检查本机 CLI 和笔记库目录');return await new GenerationRunner({executable,cwd,model:this.assistant.state.model}).run(prompt,{images,signal:controller.signal});}finally{signal?.removeEventListener('abort',abort);this.jobBusy=false;this.jobAbort=null;}}
  coursePreferences(){new SimpleModal(this,'讯飞听见本机连接',(root,m)=>{V.el(root,'p','td-muted','使用本机 xftj-transcribe 工具和官方授权。凭据不写入笔记库；仅列出录音并读取已有稿，不发起付费转写。');const script=formField(root,'xftj.py 完整路径（留空自动查找）','text',this.xftjSettings.script||'');const python=formField(root,'Python 可执行文件或完整路径','text',this.xftjSettings.python||'python');V.button(root,'保存讯飞连接设置',()=>{if(this.views.size&&[...this.views].some(v=>v.state.course?.busy)){new Notice('请先停止课程操作');return;}this.xftjSettings={script:script.value.trim(),python:python.value.trim()||'python'};localStorage.setItem(this.localKey+':xftj',JSON.stringify(this.xftjSettings));this.courseBridge=new XftjBridge(this.xftjSettings);this.courses.bridge=this.courseBridge;m.close();this.refresh();},'mod-cta');}).open();}
+ async applyCompactLayout(){const token=this.store.token('settings','settings');await this.updateSettings(D.applyCompactSettings(this.store.settings),token);}
+ async restoreHomeLayout(){const token=this.store.token('settings','settings');await this.updateSettings(D.restoreCompactSettings(this.store.settings),token);}
  async updateSettings(patch,token){await this.store.saveSettings({...this.store.settings,...patch},token);if(patch.gallery)await this.loadGalleryCredits();this.refresh();}
  galleryFolder(){return this.store.settings.gallery?.folder||this.store.root+'/风景图库';}
  galleryFiles(){const folder=this.galleryFolder();const fixed=this.store.settings.gallery?.fixedFile;return this.app.vault.getFiles().filter(f=>(f.path.startsWith(folder+'/')||f.path===fixed)&&/\.(jpe?g|png|webp)$/i.test(f.path));}
@@ -143,11 +147,11 @@ class TodoPlugin extends Plugin{
  dashboardPreferences(){const token=this.store.token('settings','settings'),g=this.store.settings.gallery||{};new SimpleModal(this,'风景与布局设置',(root,m)=>{
   const enabled=formSelect(root,'首页风景栏',[['yes','显示'],['no','隐藏']],g.enabled===false?'no':'yes');
   const folder=formField(root,'图库文件夹（库内路径）','text',this.galleryFolder());const fixed=formField(root,'固定图片（可选，留空每日轮换）','text',g.fixedFile||'');
-  const height=formField(root,'风景栏高度（120–420）','number',g.height||210);height.min='120';height.max='420';
+  const height=formField(root,'风景栏高度（120–420）','number',g.height||120);height.min='120';height.max='420';
   V.el(root,'p','td-muted','照片和署名清单保存在库内，通过 EasySync 同步；没有网络时继续使用本地照片。');
   const error=V.el(root,'p','td-error');const download=V.button(root,'下载精选风景图库（约 4.4 MB）',async()=>{download.disabled=true;try{await this.downloadScenery();new Notice('图库下载完成');}catch(e){error.textContent=e.message;}finally{download.disabled=false;}},'td-link');
   const pick=V.el(root,'input','td-input');pick.type='file';pick.accept='image/jpeg,image/png,image/webp';pick.multiple=true;pick.setAttribute('aria-label','导入自己的风景照片');pick.addEventListener('change',()=>this.run(()=>this.importScenery([...pick.files])));
-  V.button(root,'恢复默认模块布局',()=>this.run(async()=>{await this.updateSettings({dashboard:D.normalizeLayout({})});m.close();}),'td-link');
+  V.button(root,'恢复默认模块布局',()=>this.run(async()=>{await this.applyCompactLayout();m.close();}),'td-link');
   V.button(root,'保存',async()=>{try{const value=folder.value.trim();if(!validRoot(value))throw Error('请输入普通库内文件夹路径');const file=fixed.value.trim();if(file&&(!this.app.vault.getAbstractFileByPath(file)||!this.app.vault.getAbstractFileByPath(file).extension?.match(/^(jpe?g|png|webp)$/i)))throw Error('固定图片需要有效的库内照片路径');await this.updateSettings({gallery:{enabled:enabled.value==='yes',folder:value,fixedFile:file,height:D.clamp(Number(height.value),120,420,210)}},token);m.close();}catch(e){error.textContent=e.message;}},'mod-cta');
  }).open();}
  async importScenery(files){const folder=this.galleryFolder();await this.store.folders();await this.store.ensureFolder(folder);for(const file of files){if(!/\.(jpe?g|png|webp)$/i.test(file.name)||file.size>10000000)throw Error('仅支持小于 10 MB 的 JPG、PNG、WebP 照片');const name=file.name.replace(/[\\/:*?"<>|]/g,'_');const path=folder+'/'+name;if(this.app.vault.getAbstractFileByPath(path))continue;await this.app.vault.createBinary(path,await file.arrayBuffer());}this.refresh();}
