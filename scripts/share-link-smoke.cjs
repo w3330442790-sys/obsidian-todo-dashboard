@@ -1,0 +1,3 @@
+'use strict';
+const{ShareReader}=require('../src/share-reader.cjs');
+(async()=>{const reader=new ShareReader({request:async({url,method})=>{const r=await fetch(url,{method,redirect:'error'});return{status:r.status,json:await r.json()};}});const result=await reader.read(process.argv[2]);console.log(JSON.stringify({publicShareReadable:true,characters:result.text.length,paragraphs:result.paragraphs,durationMs:result.recording.audioDurations,timestamps:result.text.startsWith('['),signedMediaLinksRetained:/[?&]token=/.test(JSON.stringify(result)),accountCredentialsUsed:false,modelCalled:false}));})().catch(e=>{console.error(e.message);process.exitCode=1;});

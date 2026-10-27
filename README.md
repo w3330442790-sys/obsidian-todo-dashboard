@@ -1,10 +1,10 @@
 # 从容 · Todo 工作台
 
-Obsidian 插件，当前测试版 0.3.1。一个插件提供首页仪表盘、待办日程、灵感复盘和课程整理，支持 Windows 与安卓界面布局。数据存储于普通库文件夹，便于 EasySync 同步。
+Obsidian 插件，当前测试版 0.3.2。一个插件提供首页仪表盘、待办日程、灵感复盘和课程整理，支持 Windows 与安卓界面布局。数据存储于普通库文件夹，便于 EasySync 同步。
 
 ## 安装本地测试版
 
-1. 解压 `release/todo-dashboard-0.3.1.zip`，得到 `todo-dashboard` 文件夹。
+1. 解压 `release/todo-dashboard-0.3.2.zip`，得到 `todo-dashboard` 文件夹。
 2. 将该文件夹放到你的笔记库 `.obsidian/plugins/` 下，最终应有 `.obsidian/plugins/todo-dashboard/main.js`、`manifest.json` 和 `styles.css`。
 3. 在 Obsidian 设置 → 第三方插件中关闭受限模式，刷新插件列表并启用 **Todo 工作台**。
 4. 点击侧栏仪表盘按钮，或命令面板运行 **Todo 工作台：打开首页仪表盘**。重新打开 Obsidian 后默认进入首页。
@@ -96,6 +96,16 @@ EasySync 中将 `Todo工作台/` 和 `课程笔记/` 两个目录纳入同步，
 
 ## 课程录音与习题
 
+**0.3.2 新增分享链接入口：** 打开课程整理 → 分享链接导入 → 粘贴讯飞听见完整分享地址 → 读取链接预览 → 确认分享课程 → 确认课程并整理分享 → 检查并保存两篇草稿。
+
+该入口直接读取分享权限允许的已有转写，不需要先读取账号录音列表，也不需要配置讯飞 Python 工具或账号 API Key。Codex 整理仍在 Windows 本机执行。确认课程前不会调用模型或创建原稿文件；确认时重新核对正文和标题，分享变化或失效则要求重新预览。
+
+目前支持官方 `https://shareaudio.iflyrec.com/appShare/share.html?audioId=…` 音频分享中的原始转写结构，保留段落时间点和来源链接。不会将纪要当作原始转写；不下载音频或保留临时签名播放地址。分享配图本版不自动导入，预览中会提示，涉及图片的结论需核对；可通过习题图片入口另行补充。受限、取消、缺失正文或不支持的结构会明确失败，必要时可导出文本文件再导入。
+
+同一分享及其对应的账号录音会去重；需要重新处理时勾选对应选项。预览失败保留输入；已有待确认草稿需先保存或放弃，避免另一项生成覆盖它。
+
+以下为原有账号录音和习题流程：
+
 1. 在 **课程整理** 创建/选择课程，点击 **读取录音列表**；录音旁点击 **整理**，确认所属课程后开始。
 2. 插件只读取讯飞听见已有且解锁的转写稿，按实际 app/hj 来源分流。不自动提交新转写、AI 纪要或付费任务。会员状态不代替接口读取权限。
 3. 检查两篇可编辑草稿及变更清单，核对教师明确考点、习题知识点、AI 建议与待核对术语。确认后保存为该课程固定的两篇笔记。
@@ -120,13 +130,13 @@ Windows 通过本机 `xftj-transcribe` 工具接入：默认查找 `~/.codex/ski
 w3330442790-sys/obsidian-todo-dashboard
 ```
 
-选择 `0.3.1` 或最新版本，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
+选择 `0.3.2` 或最新版本，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
 
 维护者发布新版本的步骤：
 
 1. 仓库包含源码和根目录 `manifest.json`。
 2. 执行 `npm test` 和 `npm run build`。
-3. 创建版本标签及 Release `0.3.1`，上传 `dist/main.js`、`dist/manifest.json`、`dist/styles.css` 为独立附件。
+3. 创建版本标签及 Release `0.3.2`，上传 `dist/main.js`、`dist/manifest.json`、`dist/styles.css` 为独立附件。
 4. 两端 BRAT → Add beta plugin，填入 `用户名/仓库名` 安装。
 
 `manifest.json` 版本与 Release 标签保持一致。可参考 [BRAT 开发者指南](https://github.com/TfTHacker/obsidian42-brat/blob/main/BRAT-DEVELOPER-GUIDE.md)。BRAT 负责更新程序；EasySync 负责同步普通库数据。
@@ -142,6 +152,6 @@ npm run build
 
 `scripts/ui-test.cjs` 为浏览器隔离测试，需通过 `PLAYWRIGHT_PATH` 指定已安装的 Playwright，并可通过 `BROWSER_PATH` 指定浏览器。它使用内存 Vault 和模拟 Obsidian API，不读取用户笔记、不连接任何云服务。截图及报告存放 `artifacts/`。
 
-已验证：93 项自动测试、34 项隔离浏览器交互检查、生产打包；本机讯飞读取已有转写、Codex 独立只读课程 JSON 草稿、合成 PDF 正文/含图页提取与真实模型图像读取。0.1.1 已在 Windows Obsidian 1.14.5 验证重载后样式恢复；0.3.1 最终原生界面重载、真实安卓硬件、EasySync 双端传输和冲突处理仍需按 `ACCEPTANCE.md` 验收。
+已验证：103 项自动测试、36 项隔离浏览器交互检查、生产打包；本机讯飞读取已有转写、Codex 独立只读课程 JSON 草稿、合成 PDF 正文/含图页提取与真实模型图像读取。0.1.1 已在 Windows Obsidian 1.14.5 验证重载后样式恢复；0.3.1 最终原生界面重载、真实安卓硬件、EasySync 双端传输和冲突处理仍需按 `ACCEPTANCE.md` 验收。
 
 首版是独立待办系统，不读取或同步原 Todo清单账号。

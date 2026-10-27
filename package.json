@@ -1,6 +1,6 @@
 {
   "name": "obsidian-todo-dashboard",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "Local-first task dashboard for Obsidian",
   "scripts": {

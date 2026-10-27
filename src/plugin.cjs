@@ -1,7 +1,7 @@
 'use strict';
 const {Plugin,ItemView,Modal,Notice,PluginSettingTab,getAllTags,Platform,requestUrl}=require('obsidian');
 const C=require('./core.cjs');const {Store}=require('./store.cjs');const V=require('./views.cjs');
-const D=require('./dashboard.cjs');const A=require('./assistant.cjs');const R=require('./reflection.cjs');const {JournalStore}=require('./journal.cjs');const {CourseService}=require('./course.cjs');const {XftjBridge}=require('./xftj-bridge.cjs');const {GenerationRunner}=require('./generation.cjs');const {DocumentReader}=require('./documents.cjs');
+const D=require('./dashboard.cjs');const A=require('./assistant.cjs');const R=require('./reflection.cjs');const {JournalStore}=require('./journal.cjs');const {CourseService}=require('./course.cjs');const {XftjBridge}=require('./xftj-bridge.cjs');const {ShareReader}=require('./share-reader.cjs');const {GenerationRunner}=require('./generation.cjs');const {DocumentReader}=require('./documents.cjs');
 const VIEW='todo-dashboard-view';
 const DEFAULTS={lists:[{id:'study',name:'学习',color:'#149e9a'},{id:'work',name:'工作',color:'#6488d8'},{id:'life',name:'生活',color:'#d58c48'}],stats:[],recentSort:'modified',excludedFolders:[]};
 function clone(o){return JSON.parse(JSON.stringify(o));}
@@ -70,7 +70,8 @@ class TodoPlugin extends Plugin{
   this.journal=new JournalStore(this.app.vault,this.store.root,path=>this.store.ensureFolder(path));
   let xftj={};try{xftj=JSON.parse(localStorage.getItem(this.localKey+':xftj')||'{}');}catch{}this.xftjSettings=xftj;
   this.courseBridge=Platform?.isDesktopApp?new XftjBridge({script:xftj.script,python:xftj.python||'python'}):null;
-  this.courses=new CourseService({vault:this.app.vault,ensureFolder:path=>this.store.ensureFolder(path),generate:(prompt,options)=>this.generateJob(prompt,options),bridge:this.courseBridge,reader:Platform?.isDesktopApp?new DocumentReader():null});
+  this.shareReader=new ShareReader({request:options=>requestUrl(options)});
+  this.courses=new CourseService({vault:this.app.vault,ensureFolder:path=>this.store.ensureFolder(path),generate:(prompt,options)=>this.generateJob(prompt,options),bridge:this.courseBridge,shareReader:this.shareReader,reader:Platform?.isDesktopApp?new DocumentReader():null});
   try{this.timer=JSON.parse(localStorage.getItem(this.localKey)||'null');}catch{new Notice('计时恢复数据损坏，请检查本机存储');}
   if(this.timer&&(!Array.isArray(this.timer.segments)||typeof this.timer.accumulated!=='number'))this.timer=null;
   this.addRibbonIcon('layout-dashboard','打开 Todo 首页',()=>this.open());
