@@ -1,10 +1,10 @@
 # 从容 · Todo 工作台
 
-Obsidian 插件，当前测试版 0.1.1。一个插件提供首页仪表盘及完整待办工作台，支持 Windows 与安卓界面布局。数据存储于普通库文件夹，便于 EasySync 同步。
+Obsidian 插件，当前测试版 0.2.0。一个插件提供首页仪表盘及完整待办工作台，支持 Windows 与安卓界面布局。数据存储于普通库文件夹，便于 EasySync 同步。
 
 ## 安装本地测试版
 
-1. 解压 `release/todo-dashboard-0.1.1.zip`，得到 `todo-dashboard` 文件夹。
+1. 解压 `release/todo-dashboard-0.2.0.zip`，得到 `todo-dashboard` 文件夹。
 2. 将该文件夹放到你的笔记库 `.obsidian/plugins/` 下，最终应有 `.obsidian/plugins/todo-dashboard/main.js`、`manifest.json` 和 `styles.css`。
 3. 在 Obsidian 设置 → 第三方插件中关闭受限模式，刷新插件列表并启用 **Todo 工作台**。
 4. 点击侧栏仪表盘按钮，或命令面板运行 **Todo 工作台：打开首页仪表盘**。重新打开 Obsidian 后默认进入首页。
@@ -13,8 +13,12 @@ Obsidian 插件，当前测试版 0.1.1。一个插件提供首页仪表盘及�
 
 ## 功能
 
+- 顶部每日风景栏：9 张精选真实照片独立图库，一键下载或导入自己的照片；按本地日期轮换，离线使用本地图像。作者及许可在横幅署名和库内来源清单可查。
+- 编辑布局：拖动手柄重排模块，拖动右下角缩放；也可用上移/下移和半宽/全宽操作。顺序共享，桌面和平板尺寸分别保存，可恢复默认。
+- Windows Codex 助手：官方本机 CLI stdio 连接、账号默认或选择模型、流式对话、笔记路径引用、停止、新会话与原生审批。默认只读；可写模式每次请求先保存 Markdown 快照。
+
 - 首页：今日任务、逾期数、今日与本周专注时间、笔记总数和近 7 天新增/修改数量。
-- 最近 8 篇笔记，切换最近创建/修改；偏好设置可排除文件夹。
+- 最近笔记默认可见 5 条，其余在卡片内滚动（最多保留最近 50 条），切换最近创建/修改；偏好设置可排除文件夹。
 - 自定义文件夹或标签统计，点击查看匹配笔记。文件夹包含子文件夹，标签精确匹配。
 - 日程月历、每日任务详情、四象限、未安排日期的待办箱、分类清单和回收站。
 - 任务标题、备注、日期、可选时间段、所属清单/颜色、象限、关联笔记、一层子任务。
@@ -26,6 +30,8 @@ Obsidian 插件，当前测试版 0.1.1。一个插件提供首页仪表盘及�
 - 任务采用软删除，可在回收站恢复；不发送系统提醒。
 
 ## 数据与 EasySync
+
+0.2.0 新增图库目录 `Todo工作台/风景图库/`、可写请求的 Markdown 快照 `Todo工作台/整理备份/`，都属于普通库文件，可按需纳入 EasySync。布局与风景偏好仍在 `设置.md`，兼容旧版字段。图片依据各自署名许可分发，插件代码的 MIT 许可不替代照片许可。
 
 权威数据目录默认如下：
 
@@ -50,6 +56,26 @@ EasySync 中将 `Todo工作台/` 整个目录纳入同步，Windows 与安卓使
 
 关闭或离开应用一段时间后，恢复时暂停计时，并询问是否计入离开期间的时间。可以保持暂停、计入并继续或结束保存。无后台通知和自动休息轮次。安卓系统休眠仍需实机测试。
 
+## 每日风景与布局
+
+首页 → 风景与布局设置 → 下载精选风景图库。也可以把 Release 中的图库 ZIP 解压，将其中 `Todo工作台/风景图库/` 合并到库中，或用设置里的文件选择器导入自己的 JPG/PNG/WebP。原有同名照片不会被自动覆盖。不要删除 `SOURCE_LICENSES.md/json`，它们记录署名及许可。横幅上的署名入口可以打开来源清单。
+
+默认按本地日期在本地图像之间轮换；同一天不会因为刷新随机变化。隐藏、横幅高度、图库文件夹、固定图片均可设置。Android 和 Windows 均读取库内文件，照片通过 EasySync 同步；运行插件不需要每天访问图片网站。
+
+首页点击“编辑布局”，拖动模块标题手柄换位，拖动右下角改变宽高；“完成布局”退出。移动端可使用上移、下移和宽度下拉框，避免与页面滚动冲突。最近笔记始终最多露出约 5 条，更多内容在卡片内滚动。
+
+## Windows Codex 笔记助手
+
+安装官方 Codex CLI 并登录后，在工作台的 Codex 助手点击“连接 Codex”。自动查找 Windows Codex 安装目录，也可在“连接设置”填 `codex.exe` 的完整路径。需要登录时由 CLI 提供官方登录网址，密码/令牌不填入插件，也不写入库内文件。
+
+默认只读检索，可询问“查找关于某主题的笔记并列出引用”，或“总结某笔记”。回复中的 `[[笔记路径.md]]` 可点击打开。插件拥有自己的会话历史，不会自动导入其他 ChatGPT 聊天。最近显示的消息和自有会话 ID 保存在设备 localStorage，可新建对话。
+
+切换“整理文件（可写）”会新建独立会话。每次发送可写请求前，插件先把 Markdown 笔记保存到 `整理备份/`，并生成 manifest.json 列出原路径与备份路径；快照失败不发送操作。附件不包含在该快照内。沙箱写入工作区为当前库，原生审批请求在面板里由你处理；只读模式不提供批准写入的按钮，未知扩展权限不自动批准。
+
+先请求整理计划，再明确要求执行。不要批准与当前整理目标不符的命令。备份文件可按 manifest 路径复制回原位置；不提供自动撤销整个 Codex 会话的承诺。大型库快照超过 30 MB 时会提示先缩小范围或手动备份。
+
+安卓无法运行 Windows 本机 CLI，本版文件助手先在 Windows 可用。安卓仍可使用所有待办、风景和布局功能，平板远程连接电脑需后续单独实现。
+
 ## BRAT 安装与发布
 
 仓库：[w3330442790-sys/obsidian-todo-dashboard](https://github.com/w3330442790-sys/obsidian-todo-dashboard)。
@@ -60,13 +86,13 @@ EasySync 中将 `Todo工作台/` 整个目录纳入同步，Windows 与安卓使
 w3330442790-sys/obsidian-todo-dashboard
 ```
 
-选择 `0.1.1` 或最新版本，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
+选择 `0.2.0` 或最新版本，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
 
 维护者发布新版本的步骤：
 
 1. 仓库包含源码和根目录 `manifest.json`。
 2. 执行 `npm test` 和 `npm run build`。
-3. 创建版本标签及 Release `0.1.1`，上传 `dist/main.js`、`dist/manifest.json`、`dist/styles.css` 为独立附件。
+3. 创建版本标签及 Release `0.2.0`，上传 `dist/main.js`、`dist/manifest.json`、`dist/styles.css` 为独立附件。
 4. 两端 BRAT → Add beta plugin，填入 `用户名/仓库名` 安装。
 
 `manifest.json` 版本与 Release 标签保持一致。可参考 [BRAT 开发者指南](https://github.com/TfTHacker/obsidian42-brat/blob/main/BRAT-DEVELOPER-GUIDE.md)。BRAT 负责更新程序；EasySync 负责同步普通库数据。
@@ -82,6 +108,6 @@ npm run build
 
 `scripts/ui-test.cjs` 为浏览器隔离测试，需通过 `PLAYWRIGHT_PATH` 指定已安装的 Playwright，并可通过 `BROWSER_PATH` 指定浏览器。它使用内存 Vault 和模拟 Obsidian API，不读取用户笔记、不连接任何云服务。截图及报告存放 `artifacts/`。
 
-已验证：领域/存储测试、生产打包、隔离浏览器中的主要交互与响应式布局。补充验证：Windows Obsidian 1.14.5 重新加载后样式恢复。真实安卓硬件、EasySync 双端传输和冲突处理仍需按 `ACCEPTANCE.md` 验收。
+已验证：54 项自动测试、22 项隔离浏览器交互检查、生产打包，以及本机 Codex CLI 连接和隔离测试库中的真实只读请求。0.1.1 已在 Windows Obsidian 1.14.5 验证重载后样式恢复；0.2.0 最终原生界面重载、真实安卓硬件、EasySync 双端传输和冲突处理仍需按 `ACCEPTANCE.md` 验收。
 
 首版是独立待办系统，不读取或同步原 Todo清单账号。

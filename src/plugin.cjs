@@ -1,11 +1,12 @@
 'use strict';
-const {Plugin,ItemView,Modal,Notice,PluginSettingTab,getAllTags}=require('obsidian');
+const {Plugin,ItemView,Modal,Notice,PluginSettingTab,getAllTags,Platform,requestUrl}=require('obsidian');
 const C=require('./core.cjs');const {Store}=require('./store.cjs');const V=require('./views.cjs');
+const D=require('./dashboard.cjs');const A=require('./assistant.cjs');
 const VIEW='todo-dashboard-view';
 const DEFAULTS={lists:[{id:'study',name:'学习',color:'#149e9a'},{id:'work',name:'工作',color:'#6488d8'},{id:'life',name:'生活',color:'#d58c48'}],stats:[],recentSort:'modified',excludedFolders:[]};
 function clone(o){return JSON.parse(JSON.stringify(o));}
 function formField(parent,label,type,value){const wrap=V.el(parent,'label','td-field');V.el(wrap,'span','',label);const input=V.el(wrap,type==='textarea'?'textarea':'input','td-input');if(type!=='textarea')input.type=type;input.value=value??'';return input;}
-function formSelect(parent,label,options,value){const wrap=V.el(parent,'label','td-field');V.el(wrap,'span','',label);return V.select(wrap,options,value,()=>{});}
+function formSelect(parent,label,options,value){const wrap=V.el(parent,'label','td-field');V.el(wrap,'span','',label);const input=V.select(wrap,options,value,()=>{});input.setAttribute('aria-label',label);return input;}
 function validRoot(root){return !!root&&root===root.trim()&&!root.startsWith('.')&&!root.startsWith('/')&&!root.includes('\\')&&!root.split('/').some(s=>!s||s==='.'||s==='..'||/[<>:"|?*]/.test(s));}
 class TaskModal extends Modal{
  constructor(p,task,seed={}){super(p.app);this.p=p;this.original=task;this.token=task?p.store.token('task',task.id):undefined;this.task=clone(task||{id:C.uid(),title:'',description:'',status:'open',date:'',startTime:'',endTime:'',quadrant:'today',listId:'',repeat:'none',subtasks:[],createdAt:new Date().toISOString(),...seed});}
@@ -45,9 +46,11 @@ class DashboardView extends ItemView{
  constructor(leaf,p){super(leaf);this.plugin=p;this.state={page:'home',month:C.localDate().slice(0,7),selectedDate:C.localDate(),timelineDate:C.localDate(),list:'',showDone:false,query:''};}
  getViewType(){return VIEW;}getDisplayText(){return '从容 · Todo 工作台';}getIcon(){return 'layout-dashboard';}
  async onOpen(){this.plugin.views.add(this);this.render();}
- async onClose(){this.plugin.views.delete(this);}
+ async onClose(){this.plugin.interacting=false;this.plugin.assistant?.unsubscribe(this);this.plugin.views.delete(this);if(this.plugin.pendingRefresh)this.plugin.refresh();}
  go(page){this.state.page=page;this.render();}
  render(){
+  this.plugin.interacting=false;
+  this.plugin.assistant?.unsubscribe(this);
   if(this.plugin.ready===false){const host=this.contentEl;host.replaceChildren();host.classList.add('td-host');const box=V.el(host,'div','td-main');V.heading(box,'TODO WORKSPACE',this.plugin.initError?'工作台暂未加载完成':'正在加载工作台…',this.plugin.initError||'等待笔记库就绪');if(this.plugin.initError)V.button(box,'重试加载',()=>this.plugin.run(()=>this.plugin.initializeData()),'mod-cta');return;}
   V.render(this);
  }
@@ -58,21 +61,23 @@ class SettingsTab extends PluginSettingTab{
 }
 class TodoPlugin extends Plugin{
  async onload(){
-  this.views=new Set();this.ready=false;this.local=(await this.loadData())||{};
+  this.views=new Set();this.lastDay=C.localDate();this.ready=false;this.local=(await this.loadData())||{};
   this.local.root=validRoot(this.local.root)?this.local.root:'Todo工作台';
   this.store=new Store(this.app.vault,this.local.root);this.registerView(VIEW,leaf=>new DashboardView(leaf,this));
   this.timer=null;this.localKey=`todo-dashboard:timer:${this.app.vault.getName()}:${this.local.root}`;
+  this.assistant=new A.AssistantController(this,{desktop:!!Platform?.isDesktopApp});this.layoutDevice=Platform?.isDesktopApp?'desktop':'tablet';this.galleryCredits=new Map();
   try{this.timer=JSON.parse(localStorage.getItem(this.localKey)||'null');}catch{new Notice('计时恢复数据损坏，请检查本机存储');}
   if(this.timer&&(!Array.isArray(this.timer.segments)||typeof this.timer.accumulated!=='number'))this.timer=null;
   this.addRibbonIcon('layout-dashboard','打开 Todo 首页',()=>this.open());
   this.addCommand({id:'open-dashboard',name:'打开首页仪表盘',callback:()=>this.open()});
   this.addCommand({id:'open-calendar',name:'打开日程概览',callback:()=>this.open('calendar')});
+  this.addCommand({id:'open-codex',name:'打开 Codex 笔记助手',callback:()=>this.open('assistant')});
   this.addCommand({id:'new-task',name:'新建任务',callback:()=>this.editTask(null,{date:C.localDate()})});
   this.addCommand({id:'toggle-focus',name:'开始 / 暂停 / 继续专注',callback:()=>this.run(()=>this.timer?this.toggleTimer():this.startTimer(null))});
   this.addSettingTab(new SettingsTab(this.app,this));
-  for(const event of ['create','modify','delete','rename'])this.registerEvent(this.app.vault.on(event,(file,oldPath)=>{if(file.path.startsWith(this.store.root+'/')||oldPath?.startsWith(this.store.root+'/'))this.scheduleReload();else if(file.extension==='md')this.scheduleRender();}));
-  this.registerEvent(this.app.metadataCache.on('changed',()=>this.scheduleRender()));
-  this.registerInterval(globalThis.setInterval(()=>{for(const view of this.views)for(const e of view.contentEl.querySelectorAll('[data-timer]'))e.textContent=C.duration(this.timer?C.elapsed(this.timer):0);},1000));
+  for(const event of ['create','modify','delete','rename'])this.registerEvent(this.app.vault.on(event,(file,oldPath)=>{if(file.path.startsWith(this.store.root+'/')||oldPath?.startsWith(this.store.root+'/'))this.scheduleReload(file);else if(file.extension==='md')this.scheduleRender();}));
+  this.registerEvent(this.app.metadataCache.on('changed',file=>{if(!file?.path?.startsWith(this.store.root+'/'))this.scheduleRender();}));
+  this.registerInterval(globalThis.setInterval(()=>this.tick(),1000));
   this.registerDomEvent(document,'visibilitychange',()=>{if(document.hidden){this.hiddenAt=Date.now();this.persistTimer();}else{const gap=this.hiddenAt?Date.now()-this.hiddenAt:0;if(gap>60000&&this.timer?.runningSince!=null)this.reviewTimer(this.hiddenAt);else this.refresh();this.hiddenAt=null;}});
   this.app.workspace.onLayoutReady(()=>this.run(async()=>{await this.initializeData();if(this.local.autoOpen!==false)await this.open();if(this.timer)this.reviewTimer(this.timer.savedAt||Date.now());}));
  }
@@ -83,16 +88,17 @@ class TodoPlugin extends Plugin{
    await this.store.load();
    const settingsPath=this.store.root+'/设置.md';
    if(!this.store.paths.has('settings:settings')&&!this.app.vault.getAbstractFileByPath(settingsPath)&&!await this.app.vault.adapter?.exists?.(settingsPath))await this.store.saveSettings(clone(DEFAULTS));
-   await this.repairRepeats();this.ready=true;this.refresh();
+   await this.repairRepeats();await this.loadGalleryCredits();this.ready=true;this.refresh();
   })().catch(error=>{this.initError=error.message;this.refresh();throw error;}).finally(()=>{this.initializing=null;});
   return this.initializing;
  }
- onunload(){clearTimeout(this.reloadHandle);clearTimeout(this.renderHandle);this.persistTimer();}
+ onunload(){clearTimeout(this.reloadHandle);clearTimeout(this.renderHandle);this.assistant?.close();this.persistTimer();}
  async run(fn){try{return await fn();}catch(e){console.error('[Todo 工作台]',e);new Notice('操作未完成：'+e.message,8000);}}
- refresh(){for(const v of this.views)v.render();}
+ refresh(){if(this.interacting){this.pendingRefresh=true;return;}this.pendingRefresh=false;for(const v of this.views)v.render();}
+ tick(today=C.localDate()){if(this.lastDay!==today){this.lastDay=today;this.refresh();}for(const view of this.views)for(const e of view.contentEl.querySelectorAll('[data-timer]'))e.textContent=C.duration(this.timer?C.elapsed(this.timer):0);}
  scheduleRender(){clearTimeout(this.renderHandle);this.renderHandle=setTimeout(()=>this.refresh(),400);}
- scheduleReload(){if(this.ready===false)return;clearTimeout(this.reloadHandle);this.reloadHandle=setTimeout(()=>this.run(()=>this.reload()),350);}
- async reload(){await this.store.load();await this.repairRepeats();this.refresh();}
+ scheduleReload(file){if(this.ready===false)return;if(file&&file.extension!=='md')this.assetDirty=true;clearTimeout(this.reloadHandle);this.reloadHandle=setTimeout(()=>this.run(()=>this.reload()),350);}
+ async reload(){const fingerprint=()=>JSON.stringify([...(this.store.snapshots||[])].sort((a,b)=>a[0].localeCompare(b[0])))+JSON.stringify(this.store.errors);const before=fingerprint();await this.store.load();await this.repairRepeats();await this.loadGalleryCredits();if(before!==fingerprint()||this.assetDirty){this.assetDirty=false;this.refresh();}}
  async repairRepeats(){
   for(const task of [...this.store.tasks.values()]){
    if(task.deleted||task.status!=='done'||!task.completedAt||task.repeatIssued)continue;
@@ -122,7 +128,41 @@ class TodoPlugin extends Plugin{
   }else{const result=C.completeTask(current);await this.saveTask(result.task);const revision=this.store.token?.('task',current.id);if(result.next){await this.store.ensureTask(result.next);await this.saveTask({...result.task,repeatIssued:true},revision);}}
   this.refresh();
  }
- async updateSettings(patch,token){await this.store.saveSettings({...this.store.settings,...patch},token);this.refresh();}
+ async updateSettings(patch,token){await this.store.saveSettings({...this.store.settings,...patch},token);if(patch.gallery)await this.loadGalleryCredits();this.refresh();}
+ galleryFolder(){return this.store.settings.gallery?.folder||this.store.root+'/风景图库';}
+ galleryFiles(){const folder=this.galleryFolder();const fixed=this.store.settings.gallery?.fixedFile;return this.app.vault.getFiles().filter(f=>(f.path.startsWith(folder+'/')||f.path===fixed)&&/\.(jpe?g|png|webp)$/i.test(f.path));}
+ async loadGalleryCredits(){this.galleryCredits=new Map();const f=this.app.vault.getAbstractFileByPath(this.galleryFolder()+'/SOURCE_LICENSES.json');if(!f)return;try{const list=JSON.parse(await this.app.vault.read(f));if(Array.isArray(list))for(const entry of list)if(entry&&typeof entry.file==='string')this.galleryCredits.set(entry.file,entry);}catch{}}
+ dashboardPreferences(){const token=this.store.token('settings','settings'),g=this.store.settings.gallery||{};new SimpleModal(this,'风景与布局设置',(root,m)=>{
+  const enabled=formSelect(root,'首页风景栏',[['yes','显示'],['no','隐藏']],g.enabled===false?'no':'yes');
+  const folder=formField(root,'图库文件夹（库内路径）','text',this.galleryFolder());const fixed=formField(root,'固定图片（可选，留空每日轮换）','text',g.fixedFile||'');
+  const height=formField(root,'风景栏高度（120–420）','number',g.height||210);height.min='120';height.max='420';
+  V.el(root,'p','td-muted','照片和署名清单保存在库内，通过 EasySync 同步；没有网络时继续使用本地照片。');
+  const error=V.el(root,'p','td-error');const download=V.button(root,'下载精选风景图库（约 4.4 MB）',async()=>{download.disabled=true;try{await this.downloadScenery();new Notice('图库下载完成');}catch(e){error.textContent=e.message;}finally{download.disabled=false;}},'td-link');
+  const pick=V.el(root,'input','td-input');pick.type='file';pick.accept='image/jpeg,image/png,image/webp';pick.multiple=true;pick.setAttribute('aria-label','导入自己的风景照片');pick.addEventListener('change',()=>this.run(()=>this.importScenery([...pick.files])));
+  V.button(root,'恢复默认模块布局',()=>this.run(async()=>{await this.updateSettings({dashboard:D.normalizeLayout({})});m.close();}),'td-link');
+  V.button(root,'保存',async()=>{try{const value=folder.value.trim();if(!validRoot(value))throw Error('请输入普通库内文件夹路径');const file=fixed.value.trim();if(file&&(!this.app.vault.getAbstractFileByPath(file)||!this.app.vault.getAbstractFileByPath(file).extension?.match(/^(jpe?g|png|webp)$/i)))throw Error('固定图片需要有效的库内照片路径');await this.updateSettings({gallery:{enabled:enabled.value==='yes',folder:value,fixedFile:file,height:D.clamp(Number(height.value),120,420,210)}},token);m.close();}catch(e){error.textContent=e.message;}},'mod-cta');
+ }).open();}
+ async importScenery(files){const folder=this.galleryFolder();await this.store.folders();await this.store.ensureFolder(folder);for(const file of files){if(!/\.(jpe?g|png|webp)$/i.test(file.name)||file.size>10000000)throw Error('仅支持小于 10 MB 的 JPG、PNG、WebP 照片');const name=file.name.replace(/[\\/:*?"<>|]/g,'_');const path=folder+'/'+name;if(this.app.vault.getAbstractFileByPath(path))continue;await this.app.vault.createBinary(path,await file.arrayBuffer());}this.refresh();}
+ async backupMarkdown(checkActive=()=>{}){
+  const base=this.store.root+'/整理备份',files=this.app.vault.getMarkdownFiles().filter(f=>!f.path.startsWith(base+'/'));
+  if(files.reduce((n,f)=>n+(f.stat?.size||0),0)>30*1024*1024)throw Error('笔记快照超过 30 MB，请先缩小整理范围或手动备份');
+  const snapshot=base+'/'+new Date().toISOString().replace(/[:.]/g,'-')+'-'+C.uid().slice(0,8),prepared=[];let bytes=0;
+  for(const file of files){checkActive();const text=await this.app.vault.read(file);bytes+=text.length*2;if(bytes>60*1024*1024)throw Error('笔记快照过大，请先手动备份');prepared.push({file,text});}
+  const dirs=new Set();const ensure=async path=>{let current='';for(const part of path.split('/')){current=current?current+'/'+part:part;if(!dirs.has(current)){await this.store.ensureFolder(current);dirs.add(current);}}};await ensure(snapshot);
+  const manifest={createdAt:new Date().toISOString(),scope:'Markdown notes only; attachments are not included',files:[]};
+  for(const{file,text}of prepared){checkActive();const target=snapshot+'/'+file.path;await ensure(target.slice(0,target.lastIndexOf('/')));await this.app.vault.create(target,text);manifest.files.push({source:file.path,backup:target});}
+  await this.app.vault.create(snapshot+'/manifest.json',JSON.stringify(manifest,null,2));return snapshot;
+ }
+ async downloadScenery(){
+  if(this.downloadingScenery)throw Error('图库正在下载');this.downloadingScenery=true;
+  try{const base='https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases/download/0.2.0/';const response=await requestUrl({url:base+'SOURCE_LICENSES.json'});const list=response.json;if(!Array.isArray(list)||list.length>20)throw Error('图库清单格式不正确');const folder=this.galleryFolder();await this.store.folders();await this.store.ensureFolder(folder);
+   for(const entry of list){if(!/^[\w-]+\.(jpg|png|webp)$/.test(entry.file))throw Error('图库文件名不正确');const path=folder+'/'+entry.file;if(this.app.vault.getAbstractFileByPath(path))continue;const image=await requestUrl({url:base+entry.file});if(image.arrayBuffer.byteLength>10000000)throw Error('图库照片超过大小限制');await this.app.vault.createBinary(path,image.arrayBuffer);}
+   const path=folder+'/SOURCE_LICENSES.json',text=JSON.stringify(list,null,2),file=this.app.vault.getAbstractFileByPath(path);if(!file)await this.app.vault.create(path,text);
+   const md=folder+'/SOURCE_LICENSES.md';if(!this.app.vault.getAbstractFileByPath(md))await this.app.vault.create(md,'# 风景照片来源与许可\n\n'+list.map(e=>`- **${e.file}** — ${e.attribution||e.author}；${e.license}。\n  来源：${e.source_url}\n  许可：${e.license_url}\n  修改：${e.changes}`).join('\n\n'));
+   await this.loadGalleryCredits();this.refresh();
+  }finally{this.downloadingScenery=false;}
+ }
+ assistantPreferences(){const c=this.assistant;new SimpleModal(this,'Codex 本机连接设置',(root,m)=>{V.el(root,'p','td-muted','Windows 使用本机 Codex CLI 官方登录。账号凭据不写入笔记库。安卓不能运行本机 Windows CLI。');const path=formField(root,'codex.exe 的完整路径（留空自动查找）','text',c.state.executable);const error=V.el(root,'p','td-error');V.button(root,'保存连接设置',()=>{if(c.state.busy){error.textContent='请先停止当前回复';return;}c.close();c.state.executable=path.value.trim();c.persist();this.refresh();m.close();},'mod-cta');}).open();}
  editList(list){
   const token=this.store.token('settings','settings');new SimpleModal(this,list?'编辑清单':'创建清单',(root,m)=>{
    const name=formField(root,'清单名称','text',list?.name||'');const color=formField(root,'颜色','color',list?.color||C.PALETTE[(this.store.settings.lists||[]).length%C.PALETTE.length]);
