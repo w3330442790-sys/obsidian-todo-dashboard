@@ -17,3 +17,4 @@ for(const mode of ['complete','repair'])test(`repeat marker preserves edits made
  if(mode==='complete')await assert.rejects(pending,/stale revision/);else await pending;
  assert.equal(p.store.tasks.get('r').title,'Edited while saving');
 });
+test('timeline current-time markers update on the periodic tick',()=>{const p=plugin();p.lastDay=C.localDate();const line={dataset:{hourHeight:'48'},style:{}};p.views.add({contentEl:{querySelectorAll:selector=>selector==='[data-now-line]'?[line]:[]}});p.store.sessions=new Map();p.tick();assert.ok(Number.parseFloat(line.style.top)>=0);});

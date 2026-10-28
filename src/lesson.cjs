@@ -1,0 +1,4 @@
+'use strict';
+function fileName(value){const name=String(value||'').trim().replace(/[\\/:*?"<>|\[\]#^\x00-\x1f]/g,'_').replace(/[. ]+$/g,'').slice(0,100);if(!name||/^\.+$/.test(name)||/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name))throw Error('课程或课次名称不合法');return name;}
+function lessonDirectory(course,rows,old){const start='<!-- lessons:start -->',end='<!-- lessons:end -->',body=rows.filter(r=>r.lessonPath).sort((a,b)=>a.lessonNumber-b.lessonNumber).map(r=>'- [['+r.lessonPath.replace(/\.md$/,'')+'|第'+String(r.lessonNumber).padStart(2,'0')+'课 · '+String(r.title).replace(/[\r\n|\[\]]/g,' ')+']]').join('\n');const block=start+'\n'+body+'\n'+end;if(old&&old.includes(start)&&old.includes(end))return old.slice(0,old.indexOf(start))+block+old.slice(old.indexOf(end)+end.length);return String(old||'# '+course.name+' · 课程目录\n\n')+'\n\n'+block+'\n';}
+module.exports={fileName,lessonDirectory};

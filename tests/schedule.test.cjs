@@ -1,0 +1,16 @@
+const {test}=require('node:test'),a=require('node:assert/strict');
+const S=require('../src/core.cjs');
+test('range dates include both ends and do not duplicate records',()=>{
+ a.equal(typeof S.taskOnDate,'function');
+ const t={date:'2026-10-28',endDate:'2026-11-02'};
+ a.equal(S.taskOnDate(t,'2026-10-27'),false);a.equal(S.taskOnDate(t,'2026-10-28'),true);a.equal(S.taskOnDate(t,'2026-11-02'),true);a.equal(S.taskOnDate(t,'2026-11-03'),false);
+ a.equal(S.taskOnDate({date:''},'2026-10-28'),false);
+});
+test('week begins Monday across month and year boundaries',()=>{a.equal(typeof S.weekDates,'function');a.deepEqual(S.weekDates('2027-01-03'),['2026-12-28','2026-12-29','2026-12-30','2026-12-31','2027-01-01','2027-01-02','2027-01-03']);});
+test('segments crossing midnight clip to the visible local day',()=>{a.equal(typeof S.clipSegment,'function');const x=S.clipSegment({start:new Date(2026,9,27,23,30).getTime(),end:new Date(2026,9,28,1,15).getTime()},'2026-10-28');a.deepEqual(x,{start:0,end:75});a.equal(S.clipSegment({start:0,end:1},'2026-10-28'),null);});
+test('overlapping intervals get distinct lanes, touching ones can share',()=>{a.equal(typeof S.layoutIntervals,'function');const x=S.layoutIntervals([{start:60,end:120},{start:90,end:180},{start:180,end:240}]);a.notEqual(x[0].lane,x[1].lane);a.equal(x[0].lanes,2);a.equal(x[2].lanes,1);});
+test('plan progress uses equal goal weight and calendar days',()=>{a.equal(typeof S.planProgress,'function');const p={startDate:'2026-10-01',endDate:'2026-10-11',goals:[{value:5,target:10},{value:100,target:100}]};a.deepEqual(S.planProgress(p,'2026-10-06'),{actual:75,natural:50,delta:25,remaining:5});a.equal(S.planProgress({...p,goals:[]},'2026-09-30').natural,0);a.equal(S.planProgress(p,'2026-11-01').natural,100);a.equal(S.planProgress({...p,endDate:p.startDate},p.startDate).natural,100);});
+test('invalid ranges, repeat ranges and invalid difficulty are rejected',()=>{for(const extra of [{endDate:'2026-10-27'},{endDate:'2026-11-01',repeat:'daily'},{difficulty:'impossible'}])a.throws(()=>S.decodeRecord(S.encodeRecord('task',{id:'t',title:'x',status:'open',date:'2026-10-28',...extra}),'task'));});
+test('plan validation rejects malformed values and supports scores',()=>{a.equal(typeof S.validatePlan,'function');const p={id:'p',title:'备考',status:'open',startDate:'2026-10-28',endDate:'2026-11-01',goals:[{id:'g',title:'单词',kind:'count',value:0,target:20}]};a.doesNotThrow(()=>S.validatePlan(p));for(const extra of [{title:''},{endDate:'2026-10-27'},{goals:[{title:'x',value:21,target:20}]},{goals:[{title:'x',value:NaN,target:100}]},{goals:[{title:'x',kind:'score',value:5,target:20}]}])a.throws(()=>S.validatePlan({...p,...extra}));});
+test('half percentage rounds consistently for mixed count and score goals',()=>{a.equal(S.planProgress({startDate:'2026-10-01',endDate:'2026-10-11',goals:[{value:5,target:20},{value:86,target:100}]},'2026-10-06').actual,56);});
+test('recurrence with a single-day end date advances both dates',()=>{const t={id:'r',title:'x',status:'done',date:'2026-10-28',endDate:'2026-10-28',repeat:'daily'};const next=S.nextOccurrence(t,'2026-10-28');a.equal(next.endDate,'2026-10-29');a.doesNotThrow(()=>S.validateTaskSchedule(next));});

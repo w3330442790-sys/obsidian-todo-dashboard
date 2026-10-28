@@ -1,7 +1,7 @@
 'use strict';
 const {Plugin,ItemView,Modal,Notice,PluginSettingTab,getAllTags,Platform,requestUrl}=require('obsidian');
 const C=require('./core.cjs');const {Store}=require('./store.cjs');const V=require('./views.cjs');
-const D=require('./dashboard.cjs');const A=require('./assistant.cjs');const R=require('./reflection.cjs');const {JournalStore}=require('./journal.cjs');const {CourseService}=require('./course.cjs');const {XftjBridge}=require('./xftj-bridge.cjs');const {ShareReader}=require('./share-reader.cjs');const {GenerationRunner}=require('./generation.cjs');const {DocumentReader}=require('./documents.cjs');
+const D=require('./dashboard.cjs');const A=require('./assistant.cjs');const R=require('./reflection.cjs');const {JournalStore}=require('./journal.cjs');const {LocalCourse}=require('./local-course.cjs');const {CourseService}=require('./course.cjs');const {XftjBridge}=require('./xftj-bridge.cjs');const {ShareReader}=require('./share-reader.cjs');const {GenerationRunner}=require('./generation.cjs');const {DocumentReader}=require('./documents.cjs');
 const VIEW='todo-dashboard-view';
 const DEFAULTS={lists:[{id:'study',name:'学习',color:'#149e9a'},{id:'work',name:'工作',color:'#6488d8'},{id:'life',name:'生活',color:'#d58c48'}],stats:[],recentSort:'modified',excludedFolders:[]};
 function clone(o){return JSON.parse(JSON.stringify(o));}
@@ -14,6 +14,8 @@ class TaskModal extends Modal{
   const t=this.task,root=this.contentEl;root.classList.add('td-modal');V.heading(root,'TASK / 任务',this.original?'编辑任务':'写下一个安排');
   const form=V.el(root,'form','td-form');this.form=form;const title=formField(form,'任务名称','text',t.title);title.required=true;title.placeholder='下一件想做的事…';
   const grid=V.el(form,'div','td-form-grid');const date=formField(grid,'计划日期（可留空）','date',t.date),start=formField(grid,'开始时间（可选）','time',t.startTime),end=formField(grid,'结束时间（可选）','time',t.endTime);
+  const endDate=formField(grid,'结束日期（范围任务，可选）','date',t.endDate||'');
+  const difficulty=formSelect(grid,'任务难度',Object.entries(C.DIFFICULTIES).map(([k,v])=>[k,v.label]),t.difficulty||'normal');
   const list=formSelect(grid,'分类清单',[['','未分类'],...(this.p.store.settings.lists||[]).map(l=>[l.id,l.name])],t.listId||'');
   const q=formSelect(grid,'所属象限',Object.entries(C.QUADRANTS),t.quadrant||'today');
   const repeat=formSelect(grid,'重复规则',[['none','不重复'],['daily','每天'],['weekly','每周'],['monthly','每月']],t.repeat||'none');
@@ -28,8 +30,9 @@ class TaskModal extends Modal{
   this.read=()=>{
    if(!title.value.trim())throw Error('请输入任务名称');if(repeat.value!=='none'&&!date.value)throw Error('重复任务需要计划日期');
    if(start.value&&end.value&&end.value<=start.value)throw Error('结束时间需晚于开始时间；跨日安排请拆为两天');
+   C.validateTaskSchedule({date:date.value,endDate:endDate.value,startTime:start.value,endTime:end.value,repeat:repeat.value,difficulty:difficulty.value});
    const dateChanged=date.value!==t.date;
-   return {...t,title:title.value.trim(),date:date.value,startTime:start.value,endTime:end.value,listId:list.value,quadrant:q.value,repeat:repeat.value,repeatAnchor:date.value?(dateChanged?Number(date.value.slice(8)):t.repeatAnchor||Number(date.value.slice(8))):null,description:desc.value,note:note.value.trim(),subtasks:t.subtasks.filter(s=>s.title.trim()).map(s=>({...s,title:s.title.trim()})),updatedAt:new Date().toISOString()};
+   return {...t,title:title.value.trim(),date:date.value,endDate:endDate.value,difficulty:difficulty.value,startTime:start.value,endTime:end.value,listId:list.value,quadrant:q.value,repeat:repeat.value,repeatAnchor:date.value?(dateChanged?Number(date.value.slice(8)):t.repeatAnchor||Number(date.value.slice(8))):null,description:desc.value,note:note.value.trim(),subtasks:t.subtasks.filter(s=>s.title.trim()).map(s=>({...s,title:s.title.trim()})),updatedAt:new Date().toISOString()};
   };
   form.onsubmit=e=>{e.preventDefault();if(form.reportValidity())this.commit(async()=>{await this.p.saveTask(this.read(),this.token);this.close();},error);};
   setTimeout(()=>title.focus(),50);
@@ -71,7 +74,7 @@ class TodoPlugin extends Plugin{
   let xftj={};try{xftj=JSON.parse(localStorage.getItem(this.localKey+':xftj')||'{}');}catch{}this.xftjSettings=xftj;
   this.courseBridge=Platform?.isDesktopApp?new XftjBridge({script:xftj.script,python:xftj.python||'python'}):null;
   this.shareReader=new ShareReader({request:options=>requestUrl(options)});
-  this.courses=new CourseService({vault:this.app.vault,ensureFolder:path=>this.store.ensureFolder(path),generate:(prompt,options)=>this.generateJob(prompt,options),bridge:this.courseBridge,shareReader:this.shareReader,reader:Platform?.isDesktopApp?new DocumentReader():null});
+  this.courses=new CourseService({vault:this.app.vault,ensureFolder:path=>this.store.ensureFolder(path),generate:(prompt,options)=>this.generateJob(prompt,options),bridge:this.courseBridge,shareReader:this.shareReader,localGenerate:Platform?.isDesktopApp?(text,options)=>new LocalCourse({request:args=>requestUrl(args)}).run(text,options):null,reader:Platform?.isDesktopApp?new DocumentReader():null});
   try{this.timer=JSON.parse(localStorage.getItem(this.localKey)||'null');}catch{new Notice('计时恢复数据损坏，请检查本机存储');}
   if(this.timer&&(!Array.isArray(this.timer.segments)||typeof this.timer.accumulated!=='number'))this.timer=null;
   this.addRibbonIcon('layout-dashboard','打开 Todo 首页',()=>this.open());
@@ -104,7 +107,7 @@ class TodoPlugin extends Plugin{
  onunload(){this.jobAbort?.abort();for(const view of this.views)view.layoutCleanup?.();clearTimeout(this.reloadHandle);clearTimeout(this.renderHandle);this.assistant?.close();this.persistTimer();}
  async run(fn){try{return await fn();}catch(e){console.error('[Todo 工作台]',e);new Notice('操作未完成：'+e.message,8000);}}
  refresh(){if(this.interacting){this.pendingRefresh=true;return;}this.pendingRefresh=false;for(const v of this.views)v.render();}
- tick(today=C.localDate()){if(this.lastDay!==today){this.lastDay=today;this.refresh();}for(const view of this.views){for(const e of view.contentEl.querySelectorAll('[data-timer]'))e.textContent=C.duration(this.timer?C.elapsed(this.timer):0);const totals=R.focusTotals([...(this.store.sessions?.values()||[])],this.timer);for(const e of view.contentEl.querySelectorAll('[data-focus-total]'))e.textContent=C.duration(totals[e.dataset.focusTotal]||0);}}
+ tick(today=C.localDate()){if(this.lastDay!==today){this.lastDay=today;this.refresh();}for(const view of this.views){const now=new Date();for(const e of view.contentEl.querySelectorAll('[data-now-line]'))e.style.top=(now.getHours()+now.getMinutes()/60)*Number(e.dataset.hourHeight||48)+'px';for(const e of view.contentEl.querySelectorAll('[data-timer]'))e.textContent=C.duration(this.timer?C.elapsed(this.timer):0);const totals=R.focusTotals([...(this.store.sessions?.values()||[])],this.timer);for(const e of view.contentEl.querySelectorAll('[data-focus-total]'))e.textContent=C.duration(totals[e.dataset.focusTotal]||0);}}
  scheduleRender(){clearTimeout(this.renderHandle);this.renderHandle=setTimeout(()=>this.refresh(),400);}
  scheduleReload(file){if(this.ready===false)return;if(file&&file.extension!=='md')this.assetDirty=true;clearTimeout(this.reloadHandle);this.reloadHandle=setTimeout(()=>this.run(()=>this.reload()),350);}
  async reload(){const fingerprint=()=>JSON.stringify([...(this.store.snapshots||[])].sort((a,b)=>a[0].localeCompare(b[0])))+JSON.stringify(this.store.errors)+JSON.stringify([...(this.journal?.snapshots||[])])+JSON.stringify(this.journal?.errors);const before=fingerprint();await this.store.load();await this.journal?.load();await this.repairRepeats();await this.loadGalleryCredits();if(before!==fingerprint()||this.assetDirty){this.assetDirty=false;this.refresh();}}

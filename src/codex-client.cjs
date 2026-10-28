@@ -167,10 +167,11 @@ class CodexClient {
     if (!['readOnly', 'workspaceWrite'].includes(mode)) throw new TypeError('Unsupported Codex mode');
     return mode;
   }
-  async startThread({ mode = 'readOnly', model, threadId } = {}) {
+  async startThread({ mode = 'readOnly', model, threadId, webSearch = false } = {}) {
     this._mode(mode);
     const params = { cwd: this.cwd, approvalPolicy: 'on-request', approvalsReviewer: 'user', sandbox: mode === 'readOnly' ? 'read-only' : 'workspace-write' };
     if (model) params.model = model;
+    if (webSearch) params.config = { web_search: 'live' };
     if (threadId) params.threadId = threadId;
     return this.request(threadId ? 'thread/resume' : 'thread/start', params);
   }

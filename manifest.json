@@ -1,9 +1,9 @@
 {
   "id": "todo-dashboard",
   "name": "Todo 工作台",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "minAppVersion": "1.7.2",
-  "description": "首页工作台、待办日程、灵感复盘、累计专注与 Codex 课程笔记整理，文件保存在笔记库。",
+  "description": "首页工作台、日周时间轴、目标计划、难度日历、灵感复盘与 Codex 课程整理，数据保存在笔记库。",
   "author": "Personal tools",
   "isDesktopOnly": false
 }

@@ -1,4 +1,5 @@
 'use strict';
+const S=require('./schedule.cjs');
 const QUADRANTS = {today:'今日处理',persist:'长期坚持',waiting:'等待推进',later:'以后再说'};
 const PALETTE=['#149e9a','#6488d8','#a47bd2','#d58c48','#d3708c','#73a46d','#b79749','#6e9da8'];
 const pad=n=>String(n).padStart(2,'0');
@@ -18,7 +19,7 @@ function nextOccurrence(task,after){
   do{next=addDays(next,step);}while(next<=after);
  }else return null;
  const series=task.seriesId||task.id;
- return {...task,id:`${series}__${next}`,seriesId:series,date:next,repeatAnchor:anchor,status:'open',completedAt:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),subtasks:(task.subtasks||[]).map(s=>({...s,done:false}))};
+ return {...task,id:`${series}__${next}`,seriesId:series,date:next,...(task.endDate?{endDate:next}:{}),repeatAnchor:anchor,status:'open',completedAt:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),subtasks:(task.subtasks||[]).map(s=>({...s,done:false}))};
 }
 function completeTask(task,date=localDate()){
  if(task.status==='done')return {task,next:null};
@@ -44,6 +45,7 @@ function decodeRecord(text,kind){
  if(kind!=='settings'&&(!value.id||typeof value.id!=='string'))throw Error('记录缺少 ID');
  if(kind==='task'&&(typeof value.title!=='string'||!['open','done'].includes(value.status)))throw Error('任务格式不正确');
  if(kind==='task'){
+  S.validateTaskSchedule(value);
   if(value.date&&(!/^\d{4}-\d{2}-\d{2}$/.test(value.date)||localDate(parseDate(value.date))!==value.date))throw Error('任务日期不合法');
   if(value.completedAt&&(!/^\d{4}-\d{2}-\d{2}$/.test(value.completedAt)||localDate(parseDate(value.completedAt))!==value.completedAt))throw Error('完成日期不合法');
   if(value.repeatAnchor!=null&&(!Number.isInteger(value.repeatAnchor)||value.repeatAnchor<1||value.repeatAnchor>31))throw Error('重复日期号不合法');
@@ -58,6 +60,7 @@ function decodeRecord(text,kind){
   if((value.stats||[]).some(s=>!s||!['folder','tag'].includes(s.kind)||typeof s.value!=='string'))throw Error('统计配置损坏');
   if((value.excludedFolders||[]).some(x=>typeof x!=='string'))throw Error('排除路径格式损坏');
  }
+ if(kind==='plan')S.validatePlan(value);
  return value;
 }
 function matchesNote(path,tags,filter){
@@ -65,4 +68,4 @@ function matchesNote(path,tags,filter){
  if(filter.kind==='tag')return tags.includes(v.startsWith('#')?v:'#'+v);
  return path.startsWith(v+'/');
 }
-module.exports={QUADRANTS,PALETTE,localDate,parseDate,addDays,uid,nextOccurrence,completeTask,elapsed,dailyDuration,duration,encodeRecord,decodeRecord,matchesNote};
+module.exports={...S,QUADRANTS,PALETTE,localDate,parseDate,addDays,uid,nextOccurrence,completeTask,elapsed,dailyDuration,duration,encodeRecord,decodeRecord,matchesNote};

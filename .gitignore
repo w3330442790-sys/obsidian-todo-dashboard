@@ -3,3 +3,10 @@ artifacts/
 release/
 dist/
 gallery/
+
+# Local integration evidence and private samples
+/findings.md
+/progress.md
+/task_plan.md
+/scripts/pilot-course.cjs
+/docs/superpowers/plans/2026-10-28-course-learning-flow.md
