@@ -74,10 +74,12 @@ function calendar(view,parent){
  const start=C.addDays(s.month+'-01',-((month.getDay()+6)%7));const tasks=filtered(view,[...p.store.tasks.values()]);
  for(let i=0;i<42;i++){
   const date=C.addDays(start,i),cell=el(grid,'div','td-day'+(date.slice(0,7)!==s.month?' is-outside':'')+(date===C.localDate()?' is-today':'')+(date===s.selectedDate?' is-selected':''));
-  const b=button(cell,String(Number(date.slice(8))),()=>{s.selectedDate=date;view.render();},'td-day-number');b.setAttribute('aria-label',date+' 查看日程');
+  const head=el(cell,'div','td-day-header');
+  const b=button(head,String(Number(date.slice(8))),()=>{s.selectedDate=date;view.render();},'td-day-number');b.setAttribute('aria-label',date+' 查看日程');b.setAttribute('aria-pressed',String(date===s.selectedDate));
   const entries=tasks.filter(t=>C.taskOnDate(t,date));
-  for(const t of entries.slice(0,3)){const tb=button(cell,t.title,()=>p.editTask(t),'td-calendar-task'+(t.status==='done'?' is-done':''));tb.style.setProperty('--task-color',C.DIFFICULTIES[t.difficulty||'normal'].color);tb.title=t.title;}
-  if(entries.length>3)button(cell,`+${entries.length-3} 更多`,()=>{s.selectedDate=date;view.render();},'td-more');
+  if(entries.length)el(head,'small','td-day-count',String(entries.length)).setAttribute('aria-label',entries.length+' 项任务');
+  const list=el(cell,'div','td-day-tasks');list.setAttribute('role','group');list.setAttribute('aria-label',date+' 的任务，可滚动查看');if(entries.length)list.tabIndex=0;
+  for(const t of entries){const tb=button(list,t.title,()=>p.editTask(t),'td-calendar-task'+(t.status==='done'?' is-done':''));tb.style.setProperty('--task-color',C.DIFFICULTIES[t.difficulty||'normal'].color);tb.title=t.title;tb.setAttribute('aria-label',t.title+(t.status==='done'?'，已完成':''));}
  }
  const detail=panel(parent,`${s.selectedDate} 的安排`,h=>button(h,'＋ 添加任务',()=>p.editTask(null,{date:s.selectedDate}),'td-link'));
  taskList(view,detail,tasks.filter(t=>C.taskOnDate(t,s.selectedDate)),'当天没有安排');

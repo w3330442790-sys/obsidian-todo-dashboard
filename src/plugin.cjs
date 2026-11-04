@@ -46,7 +46,7 @@ class SimpleModal extends Modal{
  onClose(){this.contentEl.replaceChildren();}
 }
 class DashboardView extends ItemView{
- constructor(leaf,p){super(leaf);this.plugin=p;this.state={page:'home',month:C.localDate().slice(0,7),selectedDate:C.localDate(),timelineDate:C.localDate(),list:'',showDone:false,query:''};}
+ constructor(leaf,p){super(leaf);this.plugin=p;this.state={page:'home',month:C.localDate().slice(0,7),selectedDate:C.localDate(),timelineDate:C.localDate(),list:'',showDone:true,query:''};}
  getViewType(){return VIEW;}getDisplayText(){return '从容 · Todo 工作台';}getIcon(){return 'layout-dashboard';}
  getLayoutTier(){const width=this.contentEl.clientWidth;return width<=650?'narrow':width<1100?'middle':'wide';}
  async onOpen(){this.plugin.views.add(this);this.layoutTier=this.getLayoutTier();const Observer=this.contentEl.ownerDocument?.defaultView?.ResizeObserver;if(Observer){this.resizeObserver=new Observer(()=>{const tier=this.getLayoutTier();if(tier!==this.layoutTier){this.layoutTier=tier;if(this.plugin.interacting)this.plugin.pendingRefresh=true;else this.render();}});this.resizeObserver.observe(this.contentEl);}this.render();}
