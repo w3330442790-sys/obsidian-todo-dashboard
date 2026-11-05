@@ -8,6 +8,17 @@ const COMPACT_SPANS={plans:6,week:6,stats:12,today:5,inspiration:4,focus:3,recen
 const COMPACT_HEIGHTS={plans:280,week:280,stats:62,today:208,inspiration:208,focus:208,recent:220,reflection:220,custom:220,assistant:64};
 const minHeight=id=>id==='stats'?50:id==='assistant'?56:180;
 const copy=value=>JSON.parse(JSON.stringify(value));
+const THEME_COLORS={classic:'从容青',ocean:'海屿蓝',forest:'松林绿',lavender:'暮山紫',terracotta:'暖陶橙'};
+const THEME_STYLES={classic:'经典圆角',minimal:'极简直角',soft:'柔和卡片'};
+function normalizeTheme(input){
+ const {color,style}=object(input);
+ return {color:Object.hasOwn(THEME_COLORS,color)?color:'classic',style:Object.hasOwn(THEME_STYLES,style)?style:'classic'};
+}
+function applyTheme(element,input){
+ const {color,style}=normalizeTheme(input);
+ element.dataset.tdColor=color;
+ element.dataset.tdStyle=style;
+}
 function normalizeLayout(input){const raw=object(input),order=[...new Set((Array.isArray(raw.order)?raw.order:COMPACT_ORDER).filter(id=>WIDGETS.includes(id)))];for(const id of WIDGETS)if(!order.includes(id))order.push(id);const result={version:4,order};for(const device of ['desktop','tablet']){result[device]={};for(const id of WIDGETS){const s=object(object(raw[device])[id]),fallback=device==='tablet'&&!['stats','assistant'].includes(id)?6:COMPACT_SPANS[id];result[device][id]={span:Math.round(clamp(s.span,1,12,fallback)),height:Object.hasOwn(s,'height')?(s.height==null?null:clamp(s.height,minHeight(id),900,null)):COMPACT_HEIGHTS[id]};}}return result;}
 function compactLayout(){return normalizeLayout({});}
 function legacyLayout(){const result={version:3,order:[...WIDGETS]};for(const device of ['desktop','tablet']){result[device]={};for(const id of WIDGETS)result[device][id]={span:({stats:12,focus:4,inspiration:8,assistant:12})[id]||6,height:id==='focus'?240:null};}return result;}
@@ -45,4 +56,4 @@ function placeWidgets(view,parent,blocks,ui){
  }
  return grid;
 }
-module.exports={WIDGETS,NAMES,normalizeLayout,moveWidget,moveWidgetAfter,dailyImage,clamp,placeWidgets,dropTarget,resizeSize,compactLayout,applyCompactSettings,migrateCompactSettings,restoreCompactSettings};
+module.exports={WIDGETS,NAMES,normalizeLayout,moveWidget,moveWidgetAfter,dailyImage,clamp,placeWidgets,dropTarget,resizeSize,compactLayout,applyCompactSettings,migrateCompactSettings,restoreCompactSettings,THEME_COLORS,THEME_STYLES,normalizeTheme,applyTheme};

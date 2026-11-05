@@ -1,6 +1,7 @@
 'use strict';
 const C=require('./core.cjs');
 const D=require('./dashboard.cjs');
+const scenery=require('../assets/scenery/credits.json');
 const S=require('./schedule-view.cjs'),P=require('./plans-view.cjs');
 const A=require('./assistant.cjs');const R=require('./reflection.cjs');const J=require('./journal-view.cjs');const H=require('./home-summary.cjs');
 function el(parent,tag,cls,text){const e=parent.ownerDocument.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;parent.appendChild(e);return e;}
@@ -42,11 +43,15 @@ function home(view,parent){
  const compact=p.store.settings.compactHome?.active!==false;parent.classList.toggle('td-compact',compact);const gallery=p.store.settings.gallery||{};
  if(gallery.enabled!==false){
   const banner=el(parent,'section','td-scenery');banner.style.height=D.clamp(gallery.height,120,420,compact?120:210)+'px';
-  const paths=p.galleryFiles().map(f=>f.path),chosen=D.dailyImage(paths,today,gallery.fixedFile);
-  if(chosen){const image=el(banner,'img','td-scenery-image');image.alt='每日风景';image.src=p.app.vault.getResourcePath(p.app.vault.getAbstractFileByPath(chosen));image.addEventListener('error',()=>{image.hidden=true;banner.classList.add('is-missing');});}
-  const caption=el(banner,'div','td-scenery-caption');el(caption,'span','td-scenery-date',new Intl.DateTimeFormat('zh-CN',{month:'long',day:'numeric',weekday:'long'}).format(new Date()));el(caption,'strong','',chosen?'今天，也留一点时间看风景。':'把喜欢的风景，留在这里。');
-  if(!chosen)el(caption,'small','','在“风景与布局设置”导入图库或选择本地照片');
-  const credit=chosen&&p.galleryCredits?.get(chosen.split('/').pop());if(credit)button(banner,`${credit.attribution||credit.author} · ${credit.license}`,()=>p.app.workspace.openLinkText(p.galleryFolder()+'/SOURCE_LICENSES.md','',false),'td-scenery-credit');
+  const files=new Map(p.galleryFiles().map(f=>[f.path,f]));
+  const folder=p.galleryFolder();
+  const builtIn=new Map(scenery.filter(entry=>entry.src&&(!entry.legacyFile||!files.has(folder+'/'+entry.legacyFile))).map(entry=>['builtin:'+entry.file,entry]));
+  const chosen=D.dailyImage([...files.keys(),...builtIn.keys()],today,gallery.fixedFile);
+  const file=files.get(chosen),photo=builtIn.get(chosen);
+  if(chosen){const image=el(banner,'img','td-scenery-image');image.alt='每日风景';image.src=photo?.src||p.app.vault.getResourcePath(file);image.addEventListener('error',()=>{image.hidden=true;banner.classList.add('is-missing');});}
+  const caption=el(banner,'div','td-scenery-caption');el(caption,'span','td-scenery-date',new Intl.DateTimeFormat('zh-CN',{month:'long',day:'numeric',weekday:'long'}).format(new Date()));el(caption,'strong','',photo?.label||(chosen?'今天，也留一点时间看风景。':'把喜欢的风景，留在这里。'));
+  const credit=photo||(file?.path.startsWith(folder+'/')&&p.galleryCredits?.get(file.path.slice(folder.length+1)));
+  if(credit)button(banner,`${credit.attribution||credit.author} · ${credit.license}`,()=>photo?p.sceneryCredit(photo):p.app.workspace.openLinkText(folder+'/SOURCE_LICENSES.md','',false),'td-scenery-credit');
   button(banner,'风景设置',()=>p.dashboardPreferences(),'td-scenery-settings');
  }
  const top=el(parent,'div','td-greeting');heading(top,compact?null:'YOUR DAY, AT A GLANCE','把今天，安排得从容一点。',compact?null:new Intl.DateTimeFormat('zh-CN',{dateStyle:'full'}).format(new Date()));
@@ -89,7 +94,7 @@ function workspace(view,parent){
  const p=view.plugin,s=view.state;
  const switcher=el(parent,'div','td-work-switcher');for(const[key,name]of [['today','列表'],['calendar','月历'],['quadrants','四象限'],['timeline','时间轴'],['plans','计划']])button(switcher,name,()=>view.go(key),'td-button'+(s.page===key?' is-active':''));
  if(s.page==='plans')return P.renderPlans(view,parent,{el,button,select,heading,panel});
- const h=el(parent,'div','td-work-heading');heading(h,'PLAN / DO / REFLECT',pageNames[s.page],s.page==='quadrants'?'象限决定归属，日期决定今天。':'让安排与实际投入，清晰可见。');button(h,'＋ 新建任务',()=>p.editTask(null,{date:s.page==='today'?C.localDate():''}),'mod-cta');
+ const h=el(parent,'div','td-work-heading');heading(h,'PLAN / DO / REFLECT',pageNames[s.page],s.page==='quadrants'?'今日处理仅显示安排在今天的任务。':'让安排与实际投入，清晰可见。');button(h,'＋ 新建任务',()=>p.editTask(null,{date:['today','quadrants'].includes(s.page)?C.localDate():''}),'mod-cta');
  const toolbar=el(parent,'div','td-toolbar');
  select(toolbar,[['','全部清单'],...(p.store.settings.lists||[]).map(l=>[l.id,l.name])],s.list,v=>{s.list=v;view.render();});
  const search=el(toolbar,'input','td-input');search.placeholder='搜索任务…';search.value=s.query;search.setAttribute('aria-label','搜索任务');search.addEventListener('change',()=>{s.query=search.value;view.render();});
@@ -103,7 +108,12 @@ function workspace(view,parent){
   const late=tasks.filter(t=>t.date&&(t.endDate||t.date)<today&&t.status==='open');if(late.length)taskList(view,panel(parent,`逾期 · ${late.length}`),late);
  }else if(s.page==='inbox')taskList(view,panel(parent,'未安排日期'),tasks.filter(t=>!t.date));
  else if(s.page==='quadrants'){
-  const grid=el(parent,'div','td-quadrants');for(const [key,name]of Object.entries(C.QUADRANTS)){const box=panel(grid,name,h=>button(h,'＋',()=>p.editTask(null,{quadrant:key}),'td-link'));box.classList.add('td-q-'+key);taskList(view,box,tasks.filter(t=>t.quadrant===key));}
+  const today=C.localDate(),grid=el(parent,'div','td-quadrants');
+  for(const [key,name]of Object.entries(C.QUADRANTS)){
+   const box=panel(grid,name,h=>button(h,'＋',()=>p.editTask(null,{quadrant:key,date:key==='today'?C.localDate():''}),'td-link').setAttribute('aria-label','新建'+name+'任务'));
+   box.classList.add('td-q-'+key);
+   taskList(view,box,tasks.filter(t=>t.quadrant===key&&(key!=='today'||C.taskOnDate(t,today))));
+  }
  }else if(s.page==='lists'){
   button(parent,'＋ 创建清单',()=>p.editList(),'td-link');
   for(const list of [{id:'',name:'未分类',color:'#149e9a'},...(p.store.settings.lists||[])]){const box=panel(parent,list.name,h=>{if(list.id)button(h,'编辑颜色 / 名称',()=>p.editList(list),'td-link');button(h,'＋ 任务',()=>p.editTask(null,{listId:list.id}),'td-link');});box.style.setProperty('--task-color',list.color);taskList(view,box,tasks.filter(t=>(t.listId||'')===list.id));}
@@ -112,9 +122,10 @@ function workspace(view,parent){
  }
 }
 function render(view){
- const p=view.plugin,host=view.contentEl;host.replaceChildren();host.classList.add('td-host');const root=el(host,'div','td-shell');
+ const p=view.plugin,host=view.contentEl;host.replaceChildren();host.classList.add('td-host');D.applyTheme(host,p.store.settings.theme);const root=el(host,'div','td-shell');
  const aside=el(root,'header','td-sidebar td-topbar');el(aside,'div','td-brand','○  从容');el(aside,'div','td-brand-sub','TODO WORKSPACE');
  const nav=el(aside,'nav','td-navigation');for(const [key,name]of [['home','首页'],['today','待办与日程'],['journal','灵感与复盘'],['courses','课程整理'],['assistant','Codex 助手']])button(nav,name,()=>view.go(key),'td-nav'+((key===view.state.page||key==='today'&&['calendar','timeline','quadrants','plans','inbox','lists','trash'].includes(view.state.page))?' is-active':''));
+ button(aside,'主题',()=>p.themePreferences(),'td-theme-button').setAttribute('aria-label','工作台主题');
  const footer=el(aside,'div','td-sidebar-footer');el(footer,'span','td-muted','数据保存在笔记库');button(footer,'刷新数据',()=>p.run(()=>p.reload()),'td-link');button(footer,'偏好设置',()=>p.preferences(),'td-link');
  const main=el(root,'main','td-main');const errors=[...p.store.errors,...(p.journal?.errors||[]),...(p.courses?.errors||[])];if(errors.length){const banner=el(main,'div','td-warning');el(banner,'span','',`${errors.length} 个数据文件需要检查，原文件已保留。`);button(banner,'查看详情',()=>p.showErrors(),'td-link');}
  if(view.state.page==='home')home(view,main);else if(view.state.page==='journal')J.renderJournal(view,main,{el,button,select,panel,heading,empty});else if(view.state.page==='courses')require('./course-view.cjs').renderCourses(view,main,{el,button,select,panel,heading,empty});else if(view.state.page==='assistant')A.renderAssistant(view,main,{el,button,select,heading,panel,empty});else{workspace(view,main);focusBar(view,main);}

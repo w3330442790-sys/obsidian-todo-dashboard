@@ -1,0 +1,46 @@
+/* Theme tokens stay inside the workspace and its dialogs. */
+:is(.td-host,.td-modal)[data-td-color="ocean"] { --td-accent: #1f63a8; --td-accent-dark: #8bc4ff; }
+:is(.td-host,.td-modal)[data-td-color="forest"] { --td-accent: #34643d; --td-accent-dark: #9ccc9f; }
+:is(.td-host,.td-modal)[data-td-color="lavender"] { --td-accent: #6d4a99; --td-accent-dark: #cdb5ff; }
+:is(.td-host,.td-modal)[data-td-color="terracotta"] { --td-accent: #994b30; --td-accent-dark: #ffb093; }
+
+:is(.td-host,.td-modal)[data-td-color]:not([data-td-color="classic"]) {
+  --td-soft: color-mix(in srgb, var(--td-accent) 10%, var(--background-primary));
+  --td-shell: color-mix(in srgb, var(--td-accent) 4%, var(--background-primary));
+  --td-topbar: color-mix(in srgb, var(--td-accent) 7%, var(--background-secondary));
+}
+
+.theme-dark :is(.td-host,.td-modal)[data-td-color]:not([data-td-color="classic"]) {
+  --td-accent: var(--td-accent-dark);
+  --td-on-accent: #17202c;
+}
+
+.td-host .td-shell { background: var(--td-shell, var(--background-primary)); }
+.td-host .td-topbar { background: var(--td-topbar, var(--background-secondary)); }
+:is(.td-host,.td-modal) .td-button.mod-cta,
+.td-host .td-calendar .is-today .td-day-number { color: var(--td-on-accent, white); }
+
+:is(.td-host,.td-modal)[data-td-style="minimal"] {
+  --td-card-radius: 3px;
+  --td-control-radius: 3px;
+}
+:is(.td-host,.td-modal)[data-td-style="soft"] {
+  --td-card-radius: 20px;
+  --td-control-radius: 14px;
+  --td-card-shadow: 0 4px 16px color-mix(in srgb, var(--text-normal) 9%, transparent);
+}
+:is(.td-host,.td-modal)[data-td-style]:not([data-td-style="classic"]) :is(.td-panel,.td-stat,.td-focus,.td-scenery,.td-chat-log) {
+  border-radius: var(--td-card-radius);
+  box-shadow: var(--td-card-shadow, none);
+}
+:is(.td-host,.td-modal)[data-td-style]:not([data-td-style="classic"]) :is(.td-button,.td-input,.td-select):not(.td-day-number,.td-swatch,.td-calendar-task,.td-scenery-credit,.td-scenery-settings) {
+  border-radius: var(--td-control-radius);
+}
+
+.td-host .td-theme-button { min-height: 30px; padding: 3px 9px; font-size: 12px; white-space: nowrap; }
+.td-credit-links { display: flex; flex-wrap: wrap; gap: 12px; }
+.td-modal .td-credit-links a { color: var(--td-accent); }
+@container todo-workspace (max-width:650px) {
+  .td-host .td-topbar .td-navigation { order: 1; }
+  .td-host .td-theme-button { margin-left: auto; min-height: 27px; font-size: 11px; }
+}

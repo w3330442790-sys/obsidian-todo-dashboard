@@ -11,7 +11,7 @@ function validRoot(root){return !!root&&root===root.trim()&&!root.startsWith('.'
 class TaskModal extends Modal{
  constructor(p,task,seed={}){super(p.app);this.p=p;this.original=task;this.token=task?p.store.token('task',task.id):undefined;this.task=clone(task||{id:C.uid(),title:'',description:'',status:'open',date:'',startTime:'',endTime:'',quadrant:'today',listId:'',repeat:'none',subtasks:[],createdAt:new Date().toISOString(),...seed});}
  onOpen(){
-  const t=this.task,root=this.contentEl;root.classList.add('td-modal');V.heading(root,'TASK / 任务',this.original?'编辑任务':'写下一个安排');
+  const t=this.task,root=this.contentEl;root.classList.add('td-modal');D.applyTheme(root,this.p.store.settings.theme);V.heading(root,'TASK / 任务',this.original?'编辑任务':'写下一个安排');
   const form=V.el(root,'form','td-form');this.form=form;const title=formField(form,'任务名称','text',t.title);title.required=true;title.placeholder='下一件想做的事…';
   const grid=V.el(form,'div','td-form-grid');const date=formField(grid,'计划日期（可留空）','date',t.date),start=formField(grid,'开始时间（可选）','time',t.startTime),end=formField(grid,'结束时间（可选）','time',t.endTime);
   const endDate=formField(grid,'结束日期（范围任务，可选）','date',t.endDate||'');
@@ -41,8 +41,8 @@ class TaskModal extends Modal{
  onClose(){this.contentEl.replaceChildren();}
 }
 class SimpleModal extends Modal{
- constructor(p,title,build){super(p.app);this.titleText=title;this.build=build;}
- onOpen(){this.contentEl.classList.add('td-modal');V.heading(this.contentEl,'TODO WORKSPACE',this.titleText);this.build(this.contentEl,this);}
+ constructor(p,title,build){super(p.app);this.p=p;this.titleText=title;this.build=build;}
+ onOpen(){this.contentEl.classList.add('td-modal');D.applyTheme(this.contentEl,this.p.store.settings.theme);V.heading(this.contentEl,'TODO WORKSPACE',this.titleText);this.build(this.contentEl,this);}
  onClose(){this.contentEl.replaceChildren();}
 }
 class DashboardView extends ItemView{
@@ -148,12 +148,43 @@ class TodoPlugin extends Plugin{
  galleryFolder(){return this.store.settings.gallery?.folder||this.store.root+'/风景图库';}
  galleryFiles(){const folder=this.galleryFolder();const fixed=this.store.settings.gallery?.fixedFile;return this.app.vault.getFiles().filter(f=>(f.path.startsWith(folder+'/')||f.path===fixed)&&/\.(jpe?g|png|webp)$/i.test(f.path));}
  async loadGalleryCredits(){this.galleryCredits=new Map();const f=this.app.vault.getAbstractFileByPath(this.galleryFolder()+'/SOURCE_LICENSES.json');if(!f)return;try{const list=JSON.parse(await this.app.vault.read(f));if(Array.isArray(list))for(const entry of list)if(entry&&typeof entry.file==='string')this.galleryCredits.set(entry.file,entry);}catch{}}
+ sceneryCredit(photo){new SimpleModal(this,'风景照片来源与许可',(root,m)=>{
+  V.el(root,'h3','',photo.label||photo.title);
+  V.el(root,'p','',`${photo.attribution||photo.author} · ${photo.license}`);
+  const links=V.el(root,'p','td-credit-links');
+  for(const [label,url] of [['原图与作者',photo.source_url],['查看许可证',photo.license_url]]){
+   const link=V.el(links,'a','',label);link.href=url;link.target='_blank';link.rel='noopener noreferrer';
+  }
+  V.el(root,'p','td-muted','照片已缩放并转换为 WebP，横幅显示时按版面裁切。');
+  V.button(root,'关闭',()=>m.close());
+ }).open();}
+ themePreferences(){const token=this.store.token('settings','settings'),theme=D.normalizeTheme(this.store.settings.theme);
+  new SimpleModal(this,'工作台主题',(root,m)=>{
+   const color=formSelect(root,'主题配色',Object.entries(D.THEME_COLORS),theme.color);
+   const style=formSelect(root,'界面样式',Object.entries(D.THEME_STYLES),theme.style);
+   const current=()=>D.normalizeTheme({color:color.value,style:style.value});
+   const preview=()=>D.applyTheme(root,current());
+   color.addEventListener('change',preview);style.addEventListener('change',preview);
+   V.el(root,'p','td-muted','可组合配色与样式，预览会显示在此窗口。设置随笔记库保存。');
+   const sample=V.panel(root,'卡片预览');
+   V.el(sample,'p','td-muted','首页、待办、复盘与课程共用此主题。');
+   const error=V.el(root,'p','td-error');error.setAttribute('role','alert');
+   const actions=V.el(root,'div','td-modal-actions');
+   V.button(actions,'取消',()=>m.close());
+   const save=V.button(actions,'保存主题',async()=>{
+    save.disabled=true;
+    try{await this.updateSettings({theme:current()},token);m.close();}
+    catch(e){error.textContent=e.message;}
+    finally{save.disabled=false;}
+   },'mod-cta');
+  }).open();
+ }
  dashboardPreferences(){const token=this.store.token('settings','settings'),g=this.store.settings.gallery||{};new SimpleModal(this,'风景与布局设置',(root,m)=>{
   const enabled=formSelect(root,'首页风景栏',[['yes','显示'],['no','隐藏']],g.enabled===false?'no':'yes');
   const folder=formField(root,'图库文件夹（库内路径）','text',this.galleryFolder());const fixed=formField(root,'固定图片（可选，留空每日轮换）','text',g.fixedFile||'');
   const height=formField(root,'风景栏高度（120–420）','number',g.height||120);height.min='120';height.max='420';
-  V.el(root,'p','td-muted','照片和署名清单保存在库内，通过 EasySync 同步；没有网络时继续使用本地照片。');
-  const error=V.el(root,'p','td-error');const download=V.button(root,'下载精选风景图库（约 4.4 MB）',async()=>{download.disabled=true;try{await this.downloadScenery();new Notice('图库下载完成');}catch(e){error.textContent=e.message;}finally{download.disabled=false;}},'td-link');
+  V.el(root,'p','td-muted','内置照片与库内照片一起离线轮换。导入的照片可随笔记库同步。');
+  const error=V.el(root,'p','td-error');
   const pick=V.el(root,'input','td-input');pick.type='file';pick.accept='image/jpeg,image/png,image/webp';pick.multiple=true;pick.setAttribute('aria-label','导入自己的风景照片');pick.addEventListener('change',()=>this.run(()=>this.importScenery([...pick.files])));
   V.button(root,'恢复默认模块布局',()=>this.run(async()=>{await this.applyCompactLayout();m.close();}),'td-link');
   V.button(root,'保存',async()=>{try{const value=folder.value.trim();if(!validRoot(value))throw Error('请输入普通库内文件夹路径');const file=fixed.value.trim();if(file&&(!this.app.vault.getAbstractFileByPath(file)||!this.app.vault.getAbstractFileByPath(file).extension?.match(/^(jpe?g|png|webp)$/i)))throw Error('固定图片需要有效的库内照片路径');await this.updateSettings({gallery:{enabled:enabled.value==='yes',folder:value,fixedFile:file,height:D.clamp(Number(height.value),120,420,210)}},token);m.close();}catch(e){error.textContent=e.message;}},'mod-cta');
@@ -168,15 +199,6 @@ class TodoPlugin extends Plugin{
   const manifest={createdAt:new Date().toISOString(),scope:'Markdown notes only; attachments are not included',files:[]};
   for(const{file,text}of prepared){checkActive();const target=snapshot+'/'+file.path;await ensure(target.slice(0,target.lastIndexOf('/')));await this.app.vault.create(target,text);manifest.files.push({source:file.path,backup:target});}
   await this.app.vault.create(snapshot+'/manifest.json',JSON.stringify(manifest,null,2));return snapshot;
- }
- async downloadScenery(){
-  if(this.downloadingScenery)throw Error('图库正在下载');this.downloadingScenery=true;
-  try{const base='https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases/download/0.2.0/';const response=await requestUrl({url:base+'SOURCE_LICENSES.json'});const list=response.json;if(!Array.isArray(list)||list.length>20)throw Error('图库清单格式不正确');const folder=this.galleryFolder();await this.store.folders();await this.store.ensureFolder(folder);
-   for(const entry of list){if(!/^[\w-]+\.(jpg|png|webp)$/.test(entry.file))throw Error('图库文件名不正确');const path=folder+'/'+entry.file;if(this.app.vault.getAbstractFileByPath(path))continue;const image=await requestUrl({url:base+entry.file});if(image.arrayBuffer.byteLength>10000000)throw Error('图库照片超过大小限制');await this.app.vault.createBinary(path,image.arrayBuffer);}
-   const path=folder+'/SOURCE_LICENSES.json',text=JSON.stringify(list,null,2),file=this.app.vault.getAbstractFileByPath(path);if(!file)await this.app.vault.create(path,text);
-   const md=folder+'/SOURCE_LICENSES.md';if(!this.app.vault.getAbstractFileByPath(md))await this.app.vault.create(md,'# 风景照片来源与许可\n\n'+list.map(e=>`- **${e.file}** — ${e.attribution||e.author}；${e.license}。\n  来源：${e.source_url}\n  许可：${e.license_url}\n  修改：${e.changes}`).join('\n\n'));
-   await this.loadGalleryCredits();this.refresh();
-  }finally{this.downloadingScenery=false;}
  }
  assistantPreferences(){const c=this.assistant;new SimpleModal(this,'Codex 本机连接设置',(root,m)=>{V.el(root,'p','td-muted','Windows 使用本机 Codex CLI 官方登录。账号凭据不写入笔记库。安卓不能运行本机 Windows CLI。');const path=formField(root,'codex.exe 的完整路径（留空自动查找）','text',c.state.executable);const error=V.el(root,'p','td-error');V.button(root,'保存连接设置',()=>{if(c.state.busy){error.textContent='请先停止当前回复';return;}c.close();c.state.executable=path.value.trim();c.persist();this.refresh();m.close();},'mod-cta');}).open();}
  editList(list){
