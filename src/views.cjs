@@ -12,6 +12,7 @@ function heading(parent,kicker,title,detail){const h=el(parent,'div','td-section
 function panel(parent,title,action){const p=el(parent,'section','td-panel');const h=el(p,'div','td-panel-heading');el(h,'h3','',title);if(action)action(h);return p;}
 const pageNames={journal:'灵感与复盘',courses:'课程整理',plans:'计划',home:'首页',today:'今日待办',calendar:'日程概览',timeline:'时间轴',quadrants:'四象限',inbox:'待办箱',lists:'分类清单',assistant:'Codex 助手',trash:'回收站'};
 function sortTasks(tasks){return [...tasks].sort((a,b)=>(a.status==='done')-(b.status==='done')||(a.date||'9999').localeCompare(b.date||'9999')||(a.startTime||'').localeCompare(b.startTime||'')||a.title.localeCompare(b.title));}
+function isOverdue(task,today){return task.status==='open'&&task.date&&(task.endDate||task.date)<today;}
 function filtered(view,tasks){const s=view.state;return sortTasks(tasks.filter(t=>!t.deleted&&(!s.list||t.listId===s.list)&&(s.showDone||t.status!=='done')&&(!s.query||t.title.toLowerCase().includes(s.query.toLowerCase()))));}
 function taskRow(view,parent,t){
  const p=view.plugin,row=el(parent,'div','td-task'+(t.status==='done'?' is-done':''));
@@ -26,6 +27,36 @@ function taskRow(view,parent,t){
  return row;
 }
 function taskList(view,parent,tasks,message='这里暂时没有任务'){if(!tasks.length)return empty(parent,message);for(const t of tasks)taskRow(view,parent,t);}
+function overdueList(view,parent,tasks){
+ const p=view.plugin,box=panel(parent,`逾期待处理 · ${tasks.length}`);
+ if(!tasks.length){view.state.overdueSelection?.clear();return empty(box,'没有符合条件的逾期任务');}
+ const selected=view.state.overdueSelection??=new Set();
+ const entries=tasks.map(task=>({task,token:p.store.token('task',task.id)}));
+ const eligible=new Set(tasks.filter(task=>(!task.repeat||task.repeat==='none')&&(!task.endDate||task.date===task.endDate)).map(task=>task.id));
+ for(const id of selected)if(!eligible.has(id))selected.delete(id);
+ if(eligible.size){
+  const bar=el(box,'div','td-overdue-controls');
+  const batch=button(bar,'批量改期',()=>p.chooseTaskDate(entries.filter(({task})=>selected.has(task.id))));
+  const count=el(bar,'span','td-muted td-small');
+  count.setAttribute('aria-live','polite');
+  const update=()=>{batch.disabled=!selected.size;count.textContent=`已选 ${selected.size} 项 · 重复及跨日任务可单独改期`;};
+  update();
+  for(const entry of entries)renderEntry(entry,update);
+ }else for(const entry of entries)renderEntry(entry);
+ function renderEntry(entry,update){
+  const task=entry.task,item=el(box,'div','td-overdue-entry');
+  taskRow(view,item,task);
+  const actions=el(item,'div','td-overdue-controls');
+  if(eligible.has(task.id)){
+   const label=el(actions,'label','td-toggle'),check=el(label,'input','');
+   check.type='checkbox';check.checked=selected.has(task.id);check.setAttribute('aria-label','选中 '+task.title);
+   el(label,'span','','选中');check.onchange=()=>{if(check.checked)selected.add(task.id);else selected.delete(task.id);update();};
+  }
+  button(actions,'移到今天',()=>p.run(()=>p.rescheduleTasks([entry],C.localDate())),'td-link');
+  button(actions,'移到明天',()=>p.run(()=>p.rescheduleTasks([entry],C.addDays(C.localDate(),1))),'td-link');
+  button(actions,'选日期',()=>p.chooseTaskDate([entry]),'td-link');
+ }
+}
 function focusBar(view,parent){
  const p=view.plugin,box=el(parent,'section','td-focus'),left=el(box,'div','');el(left,'div','td-eyebrow','FOCUS / 专注');
  el(left,'div','td-focus-title',p.timer?.title||'留一段时间，专注当下');const time=el(box,'div','td-clock',C.duration(p.timer?C.elapsed(p.timer):0));time.dataset.timer='true';
@@ -39,7 +70,7 @@ function focusBar(view,parent){
 }
 function home(view,parent){
  const p=view.plugin,today=C.localDate(),all=[...p.store.tasks.values()].filter(t=>!t.deleted),tasks=sortTasks(all.filter(t=>C.taskOnDate(t,today)));
- const overdue=all.filter(t=>t.date&&(t.endDate||t.date)<today&&t.status==='open');
+ const overdue=all.filter(t=>isOverdue(t,today));
  const compact=p.store.settings.compactHome?.active!==false;parent.classList.toggle('td-compact',compact);const gallery=p.store.settings.gallery||{};
  if(gallery.enabled!==false){
   const banner=el(parent,'section','td-scenery');banner.style.height=D.clamp(gallery.height,120,420,compact?120:210)+'px';
@@ -57,7 +88,7 @@ function home(view,parent){
  const top=el(parent,'div','td-greeting');heading(top,compact?null:'YOUR DAY, AT A GLANCE','把今天，安排得从容一点。',compact?null:new Intl.DateTimeFormat('zh-CN',{dateStyle:'full'}).format(new Date()));
  const actions=el(top,'div','td-heading-actions');button(actions,'进入待办工作台 ↗',()=>view.go('today'),'mod-cta');button(actions,view.state.editLayout?'完成布局':'编辑布局',()=>{view.state.editLayout=!view.state.editLayout;view.render();});const tools=el(actions,'details','td-layout-tools');el(tools,'summary','','布局与外观');const menu=el(tools,'div','td-layout-menu');button(menu,p.store.settings.planningWidgets?'隐藏计划与本周模块':'显示计划与本周模块',()=>p.run(()=>p.updateSettings({planningWidgets:!p.store.settings.planningWidgets})),'td-link');button(menu,'应用紧凑推荐布局',()=>p.run(()=>p.applyCompactLayout()),'td-link');if(p.store.settings.compactHome?.previous)button(menu,'恢复之前布局',()=>p.run(()=>p.restoreHomeLayout()),'td-link');button(menu,'风景与布局设置',()=>p.dashboardPreferences(),'td-link');
  const notes=p.notes();
- const metrics=[['今日任务',tasks.length,`${tasks.filter(t=>t.status==='done').length} 项已完成`],['逾期待处理',overdue.length,'打开今日页查看',()=>view.go('today')],['笔记库',notes.length,'近 7 天：新增 '+notes.filter(f=>f.stat.ctime>=Date.now()-7*86400000).length+' / 修改 '+notes.filter(f=>f.stat.mtime>=Date.now()-7*86400000).length]];
+ const metrics=[['今日任务',tasks.length,`${tasks.filter(t=>t.status==='done').length} 项已完成`],['逾期待处理',overdue.length,'查看逾期清单',()=>view.showOverdue()],['笔记库',notes.length,'近 7 天：新增 '+notes.filter(f=>f.stat.ctime>=Date.now()-7*86400000).length+' / 修改 '+notes.filter(f=>f.stat.mtime>=Date.now()-7*86400000).length]];
  if(view.state.editLayout)el(parent,'p','td-layout-hint','拖动卡片标题换位，拖右下角调整大小；靠近边缘自动滚动，Esc 取消。');
  D.placeWidgets(view,parent,{
   stats:target=>{const stats=el(target,'div','td-stats');for(const [label,value,detail,action]of metrics){const card=el(stats,'div','td-stat');el(card,'div','td-muted',label);el(card,'strong','',value);if(action)button(card,detail,action,'td-link');else el(card,'small','td-muted',detail);}},
@@ -66,7 +97,7 @@ function home(view,parent){
   focus:target=>focusBar(view,target),
   inspiration:target=>J.renderInspiration(view,target,{el,button,select,panel}),
   reflection:target=>compact?H.renderReflectionSummary(view,target,{el,button,panel}):J.renderReflection(view,target,{el,button,select,panel}),
-  today:target=>{const todo=panel(target,'今日待办',h=>button(h,'＋ 新建',()=>p.editTask(null,{date:today}),'td-link'));const scroll=el(todo,'div','td-task-scroll');taskList(view,scroll,tasks,'今天还没有安排，写下第一件想做的事。');if(overdue.length)button(todo,`${overdue.length} 项逾期，点击处理 →`,()=>view.go('today'),'td-overdue td-link');},
+  today:target=>{const todo=panel(target,'今日待办',h=>{const actions=el(h,'div','td-heading-actions');button(actions,'快速记任务',()=>p.quickTask(),'td-link');button(actions,'＋ 新建',()=>p.editTask(null,{date:today}),'td-link');});const scroll=el(todo,'div','td-task-scroll');taskList(view,scroll,tasks,'今天还没有安排，写下第一件想做的事。');if(overdue.length)button(todo,`${overdue.length} 项逾期，点击处理 →`,()=>view.showOverdue(),'td-overdue td-link');},
   recent:target=>{const recent=panel(target,'最近笔记',h=>select(h,[['modified','最近修改'],['created','最近创建']],p.store.settings.recentSort||'modified',v=>p.run(()=>p.updateSettings({recentSort:v}))));const scroll=el(recent,'div','td-note-scroll');scroll.setAttribute('aria-label','最近笔记列表');const exclude=p.store.settings.excludedFolders||[];const recentNotes=notes.filter(f=>!exclude.some(x=>f.path.startsWith(x+'/'))).sort((a,b)=>(p.store.settings.recentSort==='created'?b.stat.ctime-a.stat.ctime:b.stat.mtime-a.stat.mtime)).slice(0,50);if(!recentNotes.length)empty(scroll,'笔记会显示在这里');for(const f of recentNotes){const b=button(scroll,'',()=>p.app.workspace.openLinkText(f.path,'',false),'td-note');el(b,'span','',f.basename||f.path.split('/').pop().replace(/\.md$/,''));el(b,'small','td-muted',f.path);}},
   custom:target=>{const custom=panel(target,'我的笔记统计',h=>button(h,'＋ 添加统计',()=>p.editStat(),'td-link'));const cards=el(custom,'div','td-custom-stats');if(!(p.store.settings.stats||[]).length)empty(cards,'添加文件夹或标签，观察知识积累。');for(const stat of p.store.settings.stats||[]){const matches=notes.filter(f=>C.matchesNote(f.path,p.noteTags(f),stat));const card=el(cards,'div','td-custom-stat');button(card,`${stat.kind==='tag'?'#':'▱'} ${stat.value}`,()=>p.showNotes(stat.value,matches),'td-link');el(card,'strong','',matches.length);button(card,'移除',()=>p.run(()=>p.updateSettings({stats:p.store.settings.stats.filter(x=>x.id!==stat.id)})),'td-small td-muted');}},
   assistant:target=>compact?H.renderAssistantSummary(view,target,{el,button,panel}):A.renderAssistant(view,target,{el,button,select,heading,panel,empty})
@@ -103,9 +134,16 @@ function workspace(view,parent){
  if(s.page==='timeline')return timeline(view,parent);
  const all=[...p.store.tasks.values()],tasks=filtered(view,all);
  if(s.page==='today'){
-  const ranges=el(parent,'div','td-list-ranges');for(const[key,name]of [['today','今日与逾期'],['all','全部待办'],['inbox','未安排'],['lists','分类管理'],['trash','回收站']])button(ranges,name,()=>{if(['lists','trash'].includes(key))view.go(key);else{s.taskRange=key;view.render();}},'td-link');
-  const today=C.localDate();if(s.taskRange==='all'){taskList(view,panel(parent,'全部待办'),tasks);return;}if(s.taskRange==='inbox'){taskList(view,panel(parent,'未安排'),tasks.filter(t=>!t.date));return;}taskList(view,panel(parent,'今天'),tasks.filter(t=>C.taskOnDate(t,today)));
-  const late=tasks.filter(t=>t.date&&(t.endDate||t.date)<today&&t.status==='open');if(late.length)taskList(view,panel(parent,`逾期 · ${late.length}`),late);
+  const ranges=el(parent,'div','td-list-ranges'),active=s.taskRange||'today';
+  for(const[key,name]of [['today','今日与逾期'],['overdue','逾期待处理'],['all','全部待办'],['inbox','未安排'],['lists','分类管理'],['trash','回收站']]){
+   button(ranges,name,()=>{if(['lists','trash'].includes(key))view.go(key);else{s.taskRange=key;s.overdueSelection?.clear();view.render();}},'td-link'+(active===key?' is-active':''));
+  }
+  const today=C.localDate(),late=tasks.filter(t=>isOverdue(t,today));
+  if(active==='overdue')return overdueList(view,parent,late);
+  if(active==='all')return taskList(view,panel(parent,'全部待办'),tasks);
+  if(active==='inbox')return taskList(view,panel(parent,'未安排'),tasks.filter(t=>!t.date));
+  taskList(view,panel(parent,'今天'),tasks.filter(t=>C.taskOnDate(t,today)));
+  if(late.length)taskList(view,panel(parent,`逾期 · ${late.length}`,h=>button(h,'处理逾期 →',()=>view.showOverdue(),'td-link')),late);
  }else if(s.page==='inbox')taskList(view,panel(parent,'未安排日期'),tasks.filter(t=>!t.date));
  else if(s.page==='quadrants'){
   const today=C.localDate(),grid=el(parent,'div','td-quadrants');

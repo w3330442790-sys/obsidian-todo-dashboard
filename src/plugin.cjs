@@ -5,14 +5,22 @@ const D=require('./dashboard.cjs');const A=require('./assistant.cjs');const R=re
 const VIEW='todo-dashboard-view';
 const DEFAULTS={lists:[{id:'study',name:'学习',color:'#149e9a'},{id:'work',name:'工作',color:'#6488d8'},{id:'life',name:'生活',color:'#d58c48'}],stats:[],recentSort:'modified',excludedFolders:[]};
 function clone(o){return JSON.parse(JSON.stringify(o));}
+function taskDraft(seed){
+ return {id:C.uid(),title:'',description:'',status:'open',date:'',startTime:'',endTime:'',quadrant:'today',listId:'',repeat:'none',subtasks:[],createdAt:new Date().toISOString(),...seed};
+}
 function formField(parent,label,type,value){const wrap=V.el(parent,'label','td-field');V.el(wrap,'span','',label);const input=V.el(wrap,type==='textarea'?'textarea':'input','td-input');if(type!=='textarea')input.type=type;input.value=value??'';return input;}
 function formSelect(parent,label,options,value){const wrap=V.el(parent,'label','td-field');V.el(wrap,'span','',label);const input=V.select(wrap,options,value,()=>{});input.setAttribute('aria-label',label);return input;}
 function validRoot(root){return !!root&&root===root.trim()&&!root.startsWith('.')&&!root.startsWith('/')&&!root.includes('\\')&&!root.split('/').some(s=>!s||s==='.'||s==='..'||/[<>:"|?*]/.test(s));}
 class TaskModal extends Modal{
- constructor(p,task,seed={}){super(p.app);this.p=p;this.original=task;this.token=task?p.store.token('task',task.id):undefined;this.task=clone(task||{id:C.uid(),title:'',description:'',status:'open',date:'',startTime:'',endTime:'',quadrant:'today',listId:'',repeat:'none',subtasks:[],createdAt:new Date().toISOString(),...seed});}
+ constructor(p,task,seed={}){super(p.app);this.p=p;this.original=task;this.token=task?p.store.token('task',task.id):undefined;this.task=task?clone({...task,subtasks:task.subtasks||[]}):taskDraft(seed);}
  onOpen(){
   const t=this.task,root=this.contentEl;root.classList.add('td-modal');D.applyTheme(root,this.p.store.settings.theme);V.heading(root,'TASK / 任务',this.original?'编辑任务':'写下一个安排');
   const form=V.el(root,'form','td-form');this.form=form;const title=formField(form,'任务名称','text',t.title);title.required=true;title.placeholder='下一件想做的事…';
+  if(t.planGoal){
+   const plan=this.p.store.plans.get(t.planGoal.planId),goal=plan?.goals.find(g=>g.id===t.planGoal.goalId);
+   if(plan&&!plan.deleted&&goal)V.button(form,`查看计划 ↗ ${plan.title} / ${goal.title}`,()=>{this.close();this.p.run(()=>this.p.openPlan(t.planGoal));},'td-link td-task-plan-link');
+   else V.el(form,'p','td-muted','关联的计划或子目标已移除。');
+  }
   const grid=V.el(form,'div','td-form-grid');const date=formField(grid,'计划日期（可留空）','date',t.date),start=formField(grid,'开始时间（可选）','time',t.startTime),end=formField(grid,'结束时间（可选）','time',t.endTime);
   const endDate=formField(grid,'结束日期（范围任务，可选）','date',t.endDate||'');
   const difficulty=formSelect(grid,'任务难度',Object.entries(C.DIFFICULTIES).map(([k,v])=>[k,v.label]),t.difficulty||'normal');
@@ -52,6 +60,7 @@ class DashboardView extends ItemView{
  async onOpen(){this.plugin.views.add(this);this.layoutTier=this.getLayoutTier();const Observer=this.contentEl.ownerDocument?.defaultView?.ResizeObserver;if(Observer){this.resizeObserver=new Observer(()=>{const tier=this.getLayoutTier();if(tier!==this.layoutTier){this.layoutTier=tier;if(this.plugin.interacting)this.plugin.pendingRefresh=true;else this.render();}});this.resizeObserver.observe(this.contentEl);}this.render();}
  async onClose(){this.resizeObserver?.disconnect();this.layoutCleanup?.();this.plugin.interacting=false;this.plugin.assistant?.unsubscribe(this);this.plugin.views.delete(this);if(this.plugin.pendingRefresh)this.plugin.refresh();}
  go(page){if(page==='courses'&&!this.state.course?.busy&&this.state.course)this.state.course.courses=null;this.state.page=page;this.render();}
+ showOverdue(){Object.assign(this.state,{taskRange:'overdue',list:'',query:'',overdueSelection:new Set()});this.go('today');}
  render(){
   this.layoutCleanup?.();this.plugin.interacting=false;
   this.plugin.assistant?.unsubscribe(this);
@@ -84,6 +93,7 @@ class TodoPlugin extends Plugin{
   this.addCommand({id:'open-journal',name:'打开灵感与复盘',callback:()=>this.open('journal')});
   this.addCommand({id:'open-codex',name:'打开 Codex 笔记助手',callback:()=>this.open('assistant')});
   this.addCommand({id:'new-task',name:'新建任务',callback:()=>this.editTask(null,{date:C.localDate()})});
+  this.addCommand({id:'quick-task',name:'快速记任务',callback:()=>this.quickTask()});
   this.addCommand({id:'toggle-focus',name:'开始 / 暂停 / 继续专注',callback:()=>this.run(()=>this.timer?this.toggleTimer():this.startTimer(null))});
   this.addSettingTab(new SettingsTab(this.app,this));
   for(const event of ['create','modify','delete','rename'])this.registerEvent(this.app.vault.on(event,(file,oldPath)=>{if(file.path.startsWith(this.store.root+'/')||oldPath?.startsWith(this.store.root+'/')||file.path.startsWith(this.courses.root+'/')||oldPath?.startsWith(this.courses.root+'/'))this.scheduleReload(file);else if(file.extension==='md')this.scheduleRender();}));
@@ -124,13 +134,82 @@ class TodoPlugin extends Plugin{
    }catch(e){this.store.errors.push({path:this.store.paths?.get('task:'+task.id)||`任务 ${task.id}`,message:'重复任务修复失败：'+e.message});}
   }
  }
- async open(page='home'){
-  let leaf=this.app.workspace.getLeavesOfType(VIEW)[0];if(!leaf){leaf=this.app.workspace.getLeaf('tab');await leaf.setViewState({type:VIEW,active:true});}await this.app.workspace.revealLeaf(leaf);leaf.view.go(page);
+ async open(page='home',state={}){
+  let leaf=this.app.workspace.getLeavesOfType(VIEW)[0];if(!leaf){leaf=this.app.workspace.getLeaf('tab');await leaf.setViewState({type:VIEW,active:true});}await this.app.workspace.revealLeaf(leaf);Object.assign(leaf.view.state,state);leaf.view.go(page);return leaf.view;
+ }
+ async openPlan({planId,goalId}){
+  const plan=this.store.plans.get(planId);
+  if(!plan||plan.deleted)throw Error('关联的计划已移除');
+  const view=await this.open('plans',{planStatus:plan.status});
+  const card=[...view.contentEl.querySelectorAll('[data-plan-id]')].find(el=>el.dataset.planId===planId);
+  const goal=[...(card?.querySelectorAll('[data-goal-id]')||[])].find(el=>el.dataset.goalId===goalId);
+  const target=goal||card;
+  if(target){target.tabIndex=-1;target.focus();}
  }
  list(id){return (this.store.settings.lists||[]).find(l=>l.id===id);}
  notes(){return this.app.vault.getMarkdownFiles().filter(f=>!f.path.startsWith(this.store.root+'/'));}
  noteTags(file){const cache=this.app.metadataCache.getFileCache(file);return cache?(getAllTags(cache)||[]):[];}
  editTask(task,seed={}){if(this.ready===false){new Notice('工作台正在等待笔记库加载，请稍后重试');return;}new TaskModal(this,task,seed).open();}
+ quickTask(planGoal){
+  if(this.ready===false){new Notice('工作台正在等待笔记库加载，请稍后重试');return;}
+  const plan=planGoal&&this.store.plans.get(planGoal.planId),goal=plan?.goals.find(g=>g.id===planGoal.goalId);
+  if(planGoal&&(!plan||plan.deleted||!goal)){new Notice('关联的计划或子目标已移除');return;}
+  const task=taskDraft(planGoal?{planGoal}:{});
+  new SimpleModal(this,planGoal?'创建下一步':'快速记任务',(root,m)=>{
+   if(goal)V.el(root,'p','td-muted',`${plan.title} / ${goal.title}`);
+   const form=V.el(root,'form','td-form');
+   const title=formField(form,'任务名称','text','');title.required=true;title.placeholder=goal?'下一步准备做什么？':'想记下什么？';title.focus();
+   const when=formSelect(form,'安排到',[['today','今天'],['tomorrow','明天'],['inbox','待办箱']], 'today');
+   const error=V.el(form,'p','td-error');error.setAttribute('role','alert');
+   const actions=V.el(form,'div','td-modal-actions');
+   const cancel=V.button(actions,'取消',()=>m.close());
+   const save=V.button(actions,'保存任务',()=>{},'mod-cta');save.type='submit';
+   form.onsubmit=async event=>{
+    event.preventDefault();
+    if(save.disabled)return;
+    const name=title.value.trim();
+    if(!name){error.textContent='请输入任务名称';title.focus();return;}
+    const today=C.localDate(),date=when.value==='inbox'?'':C.addDays(today,when.value==='tomorrow'?1:0);
+    save.disabled=cancel.disabled=true;
+    try{await this.saveTask({...task,title:name,date});m.close();}
+    catch(e){error.textContent=e.message;}
+    finally{save.disabled=cancel.disabled=false;}
+   };
+  }).open();
+ }
+ async rescheduleTasks(entries,date){
+  if(this.ready===false)throw Error('笔记库尚未加载完成');
+  const changes=entries.map(({task,token})=>({task:C.rescheduleTask(task,date),token}));
+  const failed=[];let saved=0;
+  for(const {task,token} of changes){
+   try{
+    await this.store.saveTask({...task,updatedAt:new Date().toISOString()},token);
+    saved++;
+   }catch(e){failed.push(`${task.title}：${e.message}`);}
+  }
+  this.refresh();
+  if(failed.length)throw Error(`已改期 ${saved} 项，失败 ${failed.length} 项。\n${failed.join('\n')}`);
+ }
+ chooseTaskDate(entries){
+  new SimpleModal(this,entries.length===1?'任务改期':`批量改期 · ${entries.length} 项`,(root,m)=>{
+   const form=V.el(root,'form','td-form'),date=formField(form,'新计划日期','date',C.localDate());
+   date.required=true;
+   if(entries.length===1)V.el(root,'p','td-muted',entries[0].task.title);
+   const error=V.el(form,'p','td-error');error.setAttribute('role','alert');
+   const actions=V.el(form,'div','td-modal-actions');
+   const cancel=V.button(actions,'关闭',()=>m.close());
+   const save=V.button(actions,'应用改期',()=>{},'mod-cta');save.type='submit';
+   form.onsubmit=async event=>{
+    event.preventDefault();
+    if(save.disabled)return;
+    if(!C.dateOK(date.value)){error.textContent='请选择有效的改期日期';return;}
+    save.disabled=cancel.disabled=true;
+    try{await this.rescheduleTasks(entries,date.value);m.close();}
+    catch(e){error.textContent=e.message;}
+    finally{cancel.disabled=false;}
+   };
+  }).open();
+ }
  async saveTask(task,token){if(this.ready===false)throw Error('笔记库尚未加载完成');await this.store.saveTask({...task,updatedAt:new Date().toISOString()},token);this.refresh();}
  async toggleTask(task){
   const current=this.store.tasks.get(task.id);if(!current)return;

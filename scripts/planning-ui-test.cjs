@@ -12,6 +12,68 @@ await check('day timeline positions tasks and clips overnight sessions',async()=
 await check('week switch, zoom and date navigation',async()=>{await page.getByRole('button',{name:'周视图',exact:true}).click();assert.equal(await page.locator('.td-time-column').count(),7);assert.equal(await page.locator('.td-week-date').count(),7);await page.getByLabel('时间轴刻度',{exact:true}).selectOption('72');assert.equal(await page.locator('.td-time-body').evaluate(e=>e.style.height),'1728px');await page.getByRole('button',{name:'后一周 ›',exact:true}).click();assert.equal(await page.getByLabel('时间轴日期',{exact:true}).inputValue(),'2026-11-04');await page.getByRole('button',{name:'‹ 前一周',exact:true}).click();await page.screenshot({path:path.join(output,'timeline-week.png'),fullPage:true});});
 await check('home summaries are scrollable and selectable and resize with layout',async()=>{await page.getByRole('button',{name:'首页',exact:true}).click();await page.locator('.td-layout-tools>summary').click();await page.getByRole('button',{name:'显示计划与本周模块',exact:true}).click();await page.getByLabel('首页显示的计划',{exact:true}).waitFor();assert.equal(await page.locator('[data-widget=week]').count(),1);await page.getByRole('button',{name:'编辑布局',exact:true}).click();await page.getByRole('button',{name:'调整 本周任务大小',exact:true}).press('ArrowDown');await page.waitForFunction(()=>p.store.settings.dashboard.desktop.week.height===300);await page.getByRole('button',{name:'完成布局',exact:true}).click();});
 await check('phone week has internal horizontal scroll without page overflow',async()=>{await page.setViewportSize({width:420,height:900});await page.getByRole('button',{name:'待办与日程',exact:true}).click();await page.getByRole('button',{name:'时间轴',exact:true}).click();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.equal(await page.locator('.td-time-scroll').evaluate(e=>e.scrollWidth>e.clientWidth),true);await page.screenshot({path:path.join(output,'timeline-phone.png'),fullPage:true});await page.getByRole('button',{name:'计划',exact:true}).click();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:path.join(output,'plans-phone.png'),fullPage:true});});
-await check('deleting a plan requires explicit confirmation and persists',async()=>{await page.getByRole('button',{name:'删除计划',exact:true}).click();await page.getByRole('button',{name:'取消',exact:true}).click();assert.equal(await page.locator('.td-plan-card').count(),1);await page.getByRole('button',{name:'删除计划',exact:true}).click();await page.getByRole('button',{name:'确认删除',exact:true}).click();await page.waitForFunction(()=>[...p.store.plans.values()][0].deleted===true);await page.evaluate(()=>p.reload());assert.equal(await page.locator('.td-plan-card').count(),0);});
+await check('a goal creates a linked task that returns to its plan and keeps progress independent',async()=>{
+ await page.getByRole('button',{name:'创建下一步：英语单词',exact:true}).click();
+ await page.getByLabel('任务名称',{exact:true}).fill('背诵第 6 组单词');
+ await page.getByRole('button',{name:'保存任务',exact:true}).click();
+ await page.locator('.td-plan-linked-tasks summary').getByText('关联任务 · 0/1 已完成').click();
+ await page.getByRole('button',{name:/待完成 · 背诵第 6 组单词/}).click();
+ const modal=page.locator('.td-modal');
+ await modal.getByRole('button',{name:/查看计划.*英语单词/}).click();
+ await page.waitForFunction(()=>document.activeElement.classList.contains('td-plan-goal'));
+ await page.locator('.td-plan-linked-tasks summary').click();
+ await page.getByRole('button',{name:/待完成 · 背诵第 6 组单词/}).click();
+ await modal.getByRole('button',{name:'标记完成',exact:true}).click();
+ await page.locator('.td-plan-linked-tasks summary').getByText('关联任务 · 1/1 已完成').waitFor();
+ await page.evaluate(()=>p.reload());
+ assert.equal(await page.getByRole('progressbar',{name:'经典等级考试备考 完成进度'}).getAttribute('aria-valuenow'),'56');
+ assert.equal(await page.locator('.td-plan-linked-tasks summary').innerText(),'关联任务 · 1/1 已完成');
+});
+await check('deleting a plan requires explicit confirmation and preserves linked tasks',async()=>{await page.getByRole('button',{name:'删除计划',exact:true}).click();await page.getByRole('button',{name:'取消',exact:true}).click();assert.equal(await page.locator('.td-plan-card').count(),1);await page.getByRole('button',{name:'删除计划',exact:true}).click();await page.getByRole('button',{name:'确认删除',exact:true}).click();await page.waitForFunction(()=>[...p.store.plans.values()][0].deleted===true);await page.evaluate(()=>p.reload());assert.equal(await page.locator('.td-plan-card').count(),0);assert.equal(await page.evaluate(()=>[...p.store.tasks.values()].find(t=>t.title==='背诵第 6 组单词').status),'done');});
+await check('quick capture saves to today, tomorrow and the inbox from the mobile home page',async()=>{
+ await page.getByRole('button',{name:'首页',exact:true}).click();
+ for(const [destination,label] of [['today','今天'],['tomorrow','明天'],['inbox','待办箱']]){
+  await page.getByRole('button',{name:'快速记任务',exact:true}).click();
+  await page.getByLabel('任务名称',{exact:true}).fill('快速录入 '+label);
+  await page.getByLabel('安排到',{exact:true}).selectOption(destination);
+  await page.getByLabel('任务名称',{exact:true}).press('Enter');
+  await page.locator('.td-modal').waitFor({state:'hidden'});
+ }
+ await page.evaluate(()=>p.reload());
+ const saved=await page.evaluate(()=>Object.fromEntries([...p.store.tasks.values()].filter(t=>t.title.startsWith('快速录入 ')).map(t=>[t.title,t.date])));
+ assert.equal(saved['快速录入 今天'],await page.evaluate(()=>p.lastDay));
+ assert.ok(saved['快速录入 明天']>saved['快速录入 今天']);
+ assert.equal(saved['快速录入 待办箱'],'');
+});
+await check('home overdue entry clears stale filters and supports single and batch rescheduling',async()=>{
+ await page.evaluate(async()=>{
+  for(const [id,title,repeat,endDate] of [
+   ['bulk-one','批量一','none',''],['bulk-two','批量二','none',''],
+   ['repeat-one','重复改期','monthly',''],['span-one','跨日改期','none','2020-11-02']
+  ])await p.saveTask({id,title,date:'2020-10-30',endDate,repeat,status:'open',quadrant:'today'});
+  Object.assign(leaf.view.state,{taskRange:'inbox',query:'old search',list:'study'});
+ });
+ await page.locator('.td-stat').getByRole('button',{name:'查看逾期清单'}).click();
+ assert.equal(await page.getByLabel('搜索任务').inputValue(),'');
+ assert.equal(await page.getByRole('checkbox',{name:'选中 重复改期'}).count(),0);
+ assert.equal(await page.getByRole('checkbox',{name:'选中 跨日改期'}).count(),0);
+ for(const title of ['批量一','批量二'])await page.getByRole('checkbox',{name:'选中 '+title}).check();
+ await page.getByRole('button',{name:'批量改期',exact:true}).click();
+ const date=await page.getByLabel('新计划日期').inputValue();
+ await page.getByRole('button',{name:'应用改期',exact:true}).click();
+ await page.locator('.td-modal').waitFor({state:'hidden'});
+ assert.deepEqual(await page.evaluate(()=>['bulk-one','bulk-two'].map(id=>p.store.tasks.get(id).date)),[date,date]);
+ const range=page.locator('.td-overdue-entry').filter({hasText:'跨日改期'});
+ await range.getByRole('button',{name:'移到明天',exact:true}).click();
+ await range.waitFor({state:'hidden'});
+ const moved=await page.evaluate(()=>p.store.tasks.get('span-one'));
+ assert.ok(moved.date>date);
+ assert.equal((Date.parse(moved.endDate)-Date.parse(moved.date))/86400000,3);
+ const recurring=page.locator('.td-overdue-entry').filter({hasText:'重复改期'});
+ await recurring.getByRole('button',{name:'移到今天',exact:true}).click();
+ await recurring.waitFor({state:'hidden'});
+ assert.equal(await page.evaluate(()=>p.store.tasks.get('repeat-one').repeatAnchor),Number(date.slice(8)));
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+});
 assert.deepEqual(errors,[]);console.log('Planning UI checks passed: '+passed.length);
 }catch(e){errors.push(e.stack);console.error(e);process.exitCode=1;}finally{fs.writeFileSync(path.join(output,'report.json'),JSON.stringify({passed,errors,scope:'Headless Edge / isolated in-memory Obsidian API'},null,2));await browser?.close();server.close();}})();

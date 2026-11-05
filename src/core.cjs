@@ -26,6 +26,18 @@ function completeTask(task,date=localDate()){
  const done={...task,status:'done',completedAt:date,repeatIssued:false,updatedAt:new Date().toISOString()};
  return {task:done,next:nextOccurrence(done,date)};
 }
+function rescheduleTask(task,date){
+ if(task.deleted||task.status!=='open')throw Error('只有未完成的任务可以改期');
+ if(!S.dateOK(date))throw Error('请选择有效的改期日期');
+ if(task.date===date)return task;
+ const moved={...task,date,repeatAnchor:task.repeat&&task.repeat!=='none'?Number(date.slice(8)):null};
+ if(task.endDate){
+  const span=(Date.parse(task.endDate+'T00:00:00Z')-Date.parse(task.date+'T00:00:00Z'))/86400000;
+  moved.endDate=addDays(date,span);
+ }
+ S.validateTaskSchedule(moved);
+ return moved;
+}
 function elapsed(timer,now=Date.now()){return Math.max(0,(timer.accumulated||0)+(timer.runningSince==null?0:now-timer.runningSince));}
 function dailyDuration(session,date){
  const start=parseDate(date).getTime(),end=parseDate(addDays(date,1)).getTime();
@@ -50,6 +62,7 @@ function decodeRecord(text,kind){
   if(value.completedAt&&(!/^\d{4}-\d{2}-\d{2}$/.test(value.completedAt)||localDate(parseDate(value.completedAt))!==value.completedAt))throw Error('完成日期不合法');
   if(value.repeatAnchor!=null&&(!Number.isInteger(value.repeatAnchor)||value.repeatAnchor<1||value.repeatAnchor>31))throw Error('重复日期号不合法');
   if(value.repeat&&!['none','daily','weekly','monthly'].includes(value.repeat))throw Error('不支持的重复规则');
+  if(value.planGoal!=null&&(!value.planGoal.planId||typeof value.planGoal.planId!=='string'||!value.planGoal.goalId||typeof value.planGoal.goalId!=='string'))throw Error('计划子目标关联格式不正确');
   if(value.quadrant&&!QUADRANTS[value.quadrant])throw Error('任务象限不合法');
   if(value.subtasks!=null&&(!Array.isArray(value.subtasks)||value.subtasks.some(s=>!s||typeof s.title!=='string'||typeof s.done!=='boolean')))throw Error('子任务数据损坏');
  }
@@ -68,4 +81,4 @@ function matchesNote(path,tags,filter){
  if(filter.kind==='tag')return tags.includes(v.startsWith('#')?v:'#'+v);
  return path.startsWith(v+'/');
 }
-module.exports={...S,QUADRANTS,PALETTE,localDate,parseDate,addDays,uid,nextOccurrence,completeTask,elapsed,dailyDuration,duration,encodeRecord,decodeRecord,matchesNote};
+module.exports={...S,QUADRANTS,PALETTE,localDate,parseDate,addDays,uid,nextOccurrence,completeTask,rescheduleTask,elapsed,dailyDuration,duration,encodeRecord,decodeRecord,matchesNote};

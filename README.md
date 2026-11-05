@@ -1,5 +1,7 @@
 # 从容 · Todo 工作台
 
+0.3.6：从首页直达逾期清单，可单项改期或多选普通任务批量改期。「快速记任务」只需标题，可安排到今天、明天或待办箱。计划子目标可创建关联任务，并查看完成情况。
+
 0.3.5：四象限的「今日处理」仅显示当天安排，含覆盖今天的跨日任务。首页内置 24 张真实风景照，按本地日期离线轮换。顶部「主题」可搭配 5 套配色与 3 种样式，设置随笔记库保存。
 
 0.3.4：手机月历使用紧凑日期和任务条，取消每天三条上限，长标题自动换行，日期格内可滚动查看全部任务；点击日期查看下方完整清单。默认显示已完成任务，仍可取消勾选隐藏。手机导航与待办标题区更紧凑，风景图署名和设置缩小且不遮挡文案。
@@ -12,13 +14,13 @@
 
 首页 → 布局与外观 → **显示计划与本周模块** 可开启摘要；计划可切换展示对象，任务可在模块内滚动。进入“编辑布局”可拉长计划和本周模块。此处为工作台内模块，未增加原生安卓桌面小组件。
 
-安装包 `todo-dashboard-0.3.5.zip` 可从 GitHub Releases 下载，内部 `todo-dashboard` 文件夹包含 `main.js`、`manifest.json` 和 `styles.css`。BRAT 用户可直接检查更新。
+安装包 `todo-dashboard-0.3.6.zip` 可从 GitHub Releases 下载，内部 `todo-dashboard` 文件夹包含 `main.js`、`manifest.json` 和 `styles.css`。BRAT 用户可直接检查更新。
 
-Obsidian 插件，当前版本 0.3.5。一个插件提供首页仪表盘、待办日程、灵感复盘和课程整理，支持 Windows 与安卓界面布局。数据存储于普通库文件夹，便于 EasySync 同步。
+Obsidian 插件，当前版本 0.3.6。一个插件提供首页仪表盘、待办日程、灵感复盘和课程整理，支持 Windows 与安卓界面布局。数据存储于普通库文件夹，便于 EasySync 同步。
 
 ## 安装本地测试版
 
-1. 解压 `release/todo-dashboard-0.3.5.zip`，得到 `todo-dashboard` 文件夹。
+1. 解压 `release/todo-dashboard-0.3.6.zip`，得到 `todo-dashboard` 文件夹。
 2. 将该文件夹放到你的笔记库 `.obsidian/plugins/` 下，最终应有 `.obsidian/plugins/todo-dashboard/main.js`、`manifest.json` 和 `styles.css`。
 3. 在 Obsidian 设置 → 第三方插件中关闭受限模式，刷新插件列表并启用 **Todo 工作台**。
 4. 点击侧栏仪表盘按钮，或命令面板运行 **Todo 工作台：打开首页仪表盘**。重新打开 Obsidian 后默认进入首页。
@@ -144,7 +146,7 @@ Windows 通过本机 `xftj-transcribe` 工具接入：默认查找 `~/.codex/ski
 w3330442790-sys/obsidian-todo-dashboard
 ```
 
-选择 `0.3.5` 或最新版本，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
+选择 `0.3.6` 或最新版本，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
 
 维护者发布新版本的步骤：
 

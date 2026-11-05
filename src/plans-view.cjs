@@ -13,10 +13,41 @@ function editor(view,original,ui){
  new PlanModal(p.app).open();
 }
 function card(view,parent,plan,ui,summary=false){const{el,button}=ui,p=view.plugin,progress=C.planProgress(plan),box=el(parent,'article','td-plan-card');
+ const linked=new Map();
+ if(!summary){
+  box.dataset.planId=plan.id;
+  for(const task of p.store.tasks.values()){
+   if(task.deleted||task.planGoal?.planId!==plan.id)continue;
+   const id=task.planGoal.goalId;
+   if(!linked.has(id))linked.set(id,[]);
+   linked.get(id).push(task);
+  }
+ }
  if(plan.cover&&!summary){const file=p.app.vault.getAbstractFileByPath(plan.cover);if(file){const image=el(box,'img','td-plan-cover');image.src=p.app.vault.getResourcePath(file);image.alt=plan.title;image.onerror=()=>image.hidden=true;}}
  const top=el(box,'div','td-plan-card-heading');button(top,plan.title,()=>editor(view,plan,ui),'td-plan-title');el(top,'small','td-muted',`${plan.startDate} — ${plan.endDate}`);el(box,'span','td-plan-days',plan.status==='done'?'已完成':`${plan.endDate<C.localDate()?'已到期':'还剩 '+progress.remaining+' 天'}`);if(plan.description&&!summary)el(box,'p','td-muted',plan.description);
  const label=el(box,'div','td-plan-progress-label');el(label,'span','',`自然进度 ${progress.natural}% · ${progress.delta>=0?'领先':'落后'} ${Math.abs(progress.delta)}%`);el(label,'strong','',`${progress.actual}%`);const track=el(box,'div','td-plan-track');track.setAttribute('role','progressbar');track.setAttribute('aria-label',plan.title+' 完成进度');track.setAttribute('aria-valuenow',String(progress.actual));track.setAttribute('aria-valuemin','0');track.setAttribute('aria-valuemax','100');const bar=el(track,'div','td-plan-fill');bar.style.width=progress.actual+'%';const marker=el(track,'span','td-plan-natural');marker.style.left=progress.natural+'%';
- for(const g of plan.goals){const row=el(box,'div','td-plan-goal');el(row,'strong','',g.title);const meter=el(row,'progress','');meter.max=g.target;meter.value=g.value;meter.setAttribute('aria-label',g.title);el(row,'span','',g.kind==='score'?`${g.value} 分`:`${g.value}/${g.target}`);if(g.note)el(row,'small','td-muted',g.note);}
+ for(const g of plan.goals){
+  const row=el(box,'div','td-plan-goal');
+  row.dataset.goalId=g.id;
+  el(row,'strong','',g.title);
+  const meter=el(row,'progress','');meter.max=g.target;meter.value=g.value;meter.setAttribute('aria-label',g.title);
+  el(row,'span','',g.kind==='score'?`${g.value} 分`:`${g.value}/${g.target}`);
+  if(g.note)el(row,'small','td-muted',g.note);
+  if(summary)continue;
+  const actions=el(row,'div','td-plan-task-actions');
+  if(plan.status==='open'){
+   const next=button(actions,'＋ 创建下一步',()=>p.quickTask({planId:plan.id,goalId:g.id}),'td-link');
+   next.setAttribute('aria-label','创建下一步：'+g.title);
+  }
+  const tasks=linked.get(g.id)||[];
+  if(!tasks.length)continue;
+  const details=el(actions,'details','td-plan-linked-tasks');
+  el(details,'summary','',`关联任务 · ${tasks.filter(t=>t.status==='done').length}/${tasks.length} 已完成`);
+  for(const task of tasks){
+   const title=task.status==='done'?'已完成 · ':'待完成 · ';
+   button(details,title+task.title+(task.date?' · '+task.date:''),()=>p.editTask(task),'td-link');
+  }
+ }
  if(!plan.goals.length)button(box,'＋ 添加子目标',()=>editor(view,plan,ui),'td-plan-add');
  if(!summary){const actions=el(box,'div','td-modal-actions');button(actions,'编辑计划 / 更新进度',()=>editor(view,plan,ui));const token=p.store.token('plan',plan.id);button(actions,plan.status==='done'?'重新打开':'标记完成',()=>p.run(async()=>{await p.store.savePlan({...plan,status:plan.status==='done'?'open':'done'},token);p.refresh();}));button(actions,'删除计划',()=>{const {Modal}=require('obsidian');class Confirm extends Modal{onOpen(){el(this.contentEl,'p','',`确认删除“${plan.title}”？`);button(this.contentEl,'取消',()=>this.close());button(this.contentEl,'确认删除',()=>p.run(async()=>{await p.store.savePlan({...plan,deleted:true},token);this.close();p.refresh();}),'td-danger');}}new Confirm(p.app).open();},'td-link');}
  return box;

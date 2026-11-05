@@ -40,6 +40,14 @@
 .td-host .td-theme-button { min-height: 30px; padding: 3px 9px; font-size: 12px; white-space: nowrap; }
 .td-credit-links { display: flex; flex-wrap: wrap; gap: 12px; }
 .td-modal .td-credit-links a { color: var(--td-accent); }
+.td-overdue-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.td-overdue-entry { padding-bottom: 8px; border-top: 1px solid var(--background-modifier-border); }
+.td-overdue-entry .td-task { border-bottom: 0; }
+.td-plan-task-actions { grid-column: 1 / -1; min-width: 0; }
+.td-plan-linked-tasks > summary { cursor: pointer; color: var(--text-muted); }
+.td-plan-linked-tasks > .td-button { display: block; max-width: 100%; height: auto; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.td-task-plan-link { align-self: flex-start; max-width: 100%; height: auto; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.td-plan-goal:focus { outline: 2px solid var(--td-accent); outline-offset: 5px; }
 @container todo-workspace (max-width:650px) {
   .td-host .td-topbar .td-navigation { order: 1; }
   .td-host .td-theme-button { margin-left: auto; min-height: 27px; font-size: 11px; }

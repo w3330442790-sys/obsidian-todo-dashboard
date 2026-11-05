@@ -6,6 +6,21 @@ test('timer cannot resume while finished session is being saved',async()=>{const
 test('repeat repair error is isolated and reported instead of aborting startup',async()=>{const p=plugin();p.store.tasks.set('r',{id:'r',title:'阅读',status:'done',date:C.localDate(),completedAt:C.localDate(),repeat:'daily'});p.store.ensureTask=async()=>{throw Error('损坏的后续文件');};await p.repairRepeats();assert.equal(p.store.errors.length,1);});
 test('unchanged file reload does not rebuild an editing dashboard',async()=>{const p=plugin();p.store.snapshots=new Map([['settings','same']]);p.store.load=async()=>{};p.repairRepeats=async()=>{};p.loadGalleryCredits=async()=>{};let renders=0;p.refresh=()=>renders++;await p.reload();assert.equal(renders,0);});
 test('daily tick refreshes scenery once when local date advances',()=>{const p=plugin();p.lastDay='2026-10-26';let renders=0;p.refresh=()=>renders++;p.tick('2026-10-27');p.tick('2026-10-27');assert.equal(renders,1);});
+test('batch reschedule reports stale items and preserves successful writes',async()=>{
+ const p=plugin(),task={title:'有效任务',id:'ok',date:'2026-11-01',status:'open'};
+ const stale={...task,id:'stale',title:'冲突任务'};
+ p.store.tasks.set(stale.id,stale);
+ p.store.saveTask=async(moved,token)=>{
+  if(token==='stale')throw Error('记录已被其他设备修改');
+  assert.equal(token,'current');
+  p.store.tasks.set(moved.id,moved);
+ };
+ let refreshes=0;p.refresh=()=>refreshes++;
+ await assert.rejects(p.rescheduleTasks([{task,token:'current'},{task:stale,token:'stale'}],'2026-11-05'),/已改期 1 项，失败 1 项。\n冲突任务/);
+ assert.equal(p.store.tasks.get(task.id).date,'2026-11-05');
+ assert.equal(p.store.tasks.get(stale.id).date,'2026-11-01');
+ assert.equal(refreshes,1);
+});
 for(const mode of ['complete','repair'])test(`repeat marker preserves edits made while ${mode} awaits successor creation`,async()=>{
  const p=plugin();let version=0,release;
  p.store.token=()=>version;

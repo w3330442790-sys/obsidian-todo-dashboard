@@ -2,6 +2,20 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const c = require('../src/core.cjs');
 const task = (extra={}) => ({id:'a',title:'阅读',date:'2026-10-19',repeat:'none',quadrant:'persist',status:'open',subtasks:[{id:'s',title:'步骤',done:true}],...extra});
+test('rescheduling preserves the inclusive calendar span and task details',()=>{
+ const original=task({date:'2026-10-30',endDate:'2026-11-02',startTime:'08:00',planGoal:{planId:'p',goalId:'g'}});
+ const moved=c.rescheduleTask(original,'2026-11-07');
+ assert.deepEqual(moved,{...original,date:'2026-11-07',endDate:'2026-11-10',repeatAnchor:null});
+ assert.equal(original.date,'2026-10-30');
+ assert.throws(()=>c.rescheduleTask(original,'2026-02-30'),/日期/);
+ assert.throws(()=>c.rescheduleTask({...original,status:'done'},'2026-11-07'),/未完成/);
+});
+test('single reschedule updates a monthly anchor and same-day end date',()=>{
+ const moved=c.rescheduleTask(task({repeat:'monthly',repeatAnchor:31,endDate:'2026-10-19'}),'2026-11-12');
+ assert.equal(moved.repeatAnchor,12);
+ assert.equal(moved.endDate,'2026-11-12');
+ assert.equal(c.completeTask(moved,'2026-11-12').next.date,'2026-12-12');
+});
 test('unfinished overdue task has no successor',()=>assert.equal(c.nextOccurrence(task({repeat:'daily'}),'2026-10-26'),null));
 test('daily completion skips missed dates and resets subtasks',()=>{
  const next=c.completeTask(task({repeat:'daily'}),'2026-10-26').next;
