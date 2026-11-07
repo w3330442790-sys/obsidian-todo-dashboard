@@ -22,7 +22,7 @@
 
 首页 → 布局与外观 → **显示计划与本周模块** 可开启摘要；计划可切换展示对象，任务可在模块内滚动。进入“编辑布局”可拉长计划和本周模块。此处为工作台内模块，未增加原生安卓桌面小组件。
 
-安装包 `todo-dashboard-0.3.6.zip` 可从 GitHub Releases 下载，内部 `todo-dashboard` 文件夹包含 `main.js`、`manifest.json` 和 `styles.css`。BRAT 用户可直接检查更新。
+安装包 `todo-dashboard-0.4.0.zip` 和全局主题 `congrong-theme-1.0.0.zip` 可从 GitHub Releases 下载。BRAT 用户可在插件设置中检查 Todo 工作台更新。
 
 Obsidian 插件，当前源码版本 0.4.0。一个插件提供首页仪表盘、待办日程、灵感复盘和课程整理，支持 Windows 与安卓界面布局。任务数据存储于普通库文件夹，便于 EasySync 同步。
 
@@ -154,7 +154,7 @@ Windows 通过本机 `xftj-transcribe` 工具接入：默认查找 `~/.codex/ski
 w3330442790-sys/obsidian-todo-dashboard
 ```
 
-选择 `0.3.6` 或最新版本，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
+选择 `0.4.0` 或最新版本，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
 
 维护者发布新版本的步骤：
 
