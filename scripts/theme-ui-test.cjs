@@ -54,6 +54,11 @@ async function checkUpgrade(page) {
   for (const id of ['plans','stats','custom','trend']) {
     await page.locator(`[data-widget=${id}]`).waitFor();
   }
+  await page.getByRole('button',{name:'风景设置',exact:true}).click();
+  const source=page.getByLabel('风景来源',{exact:true});
+  assert.equal(await source.inputValue(),'photos');
+  await source.selectOption('illustrations');
+  await page.getByRole('button',{name:'保存',exact:true}).click();
   await page.evaluate(async () => {
     const today = p.lastDay;
     const goal = {id:'goal',title:'完成十个小目标',kind:'count',value:4,target:10};
@@ -158,6 +163,7 @@ async function main() {
     await page.locator('.td-layout-tools > summary').click();
     await page.getByRole('button', {name:'使用自定义布局'}).click();
     await page.locator('.td-widget-grid').waitFor();
+    assert.equal(await page.locator('.td-illustrated-scenery').evaluate(e=>e.getBoundingClientRect().height),120);
     await page.locator('.td-layout-tools > summary').click();
     await page.getByRole('button', {name:'应用从容布局'}).click();
     await page.locator('.td-theme-home-grid').waitFor();

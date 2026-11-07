@@ -256,9 +256,10 @@ body.td-style-accent-enabled.theme-dark :is(.td-host,.td-modal)[data-td-color][d
 
 .td-host .td-main .td-illustrated-scenery {
   isolation: isolate;
-  min-height: 172px;
   background: color-mix(in srgb, var(--td-accent) 12%, var(--background-primary));
 }
+
+.td-host .td-theme-home .td-illustrated-scenery { min-height: 172px; }
 
 .td-host .td-main .td-illustrated-scenery .td-scenery-image {
   position: absolute;
@@ -283,7 +284,7 @@ body.td-style-accent-enabled.theme-dark :is(.td-host,.td-modal)[data-td-color][d
 @container todo-workspace (max-width: 650px) {
   .td-theme-home-overview > .td-widget,
   .td-theme-home-stats > .td-widget { grid-column: auto !important; }
-  .td-host .td-main .td-illustrated-scenery { min-height: 126px; }
+  .td-host .td-theme-home .td-illustrated-scenery { min-height: 126px; }
   .td-host .td-main .td-illustrated-scenery .td-scenery-image { width: 74%; }
 }
 

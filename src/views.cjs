@@ -7,7 +7,7 @@ const S=require('./schedule-view.cjs'),P=require('./plans-view.cjs');
 const A=require('./assistant.cjs');const R=require('./reflection.cjs');const J=require('./journal-view.cjs');const H=require('./home-summary.cjs');
 const illustrations=scenery.filter(entry=>entry.mode&&entry.src);
 const themeArtwork=(mode,color,date=C.localDate())=>D.themeIllustration(illustrations,date,mode,color);
-const scenerySource=gallery=>gallery.source||(gallery.folder?'photos':'illustrations');
+const scenerySource=(gallery,hasPhotos)=>gallery.source||((gallery.folder||hasPhotos)?'photos':'illustrations');
 function el(parent,tag,cls,text){const e=parent.ownerDocument.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;parent.appendChild(e);return e;}
 function button(parent,text,action,cls=''){const b=el(parent,'button','td-button '+cls,text);b.type='button';b.addEventListener('click',action);return b;}
 function select(parent,options,value,change){const s=el(parent,'select','td-select');for(const [v,label]of options){const o=el(s,'option','',label);o.value=v;}s.value=value;s.addEventListener('change',()=>change(s.value));return s;}
@@ -154,7 +154,7 @@ function home(view,parent){
   const folder=p.galleryFolder();
   const {tdMode,tdColor}=view.contentEl.dataset;
   const builtIn=new Map(scenery.filter(entry=>!entry.mode&&entry.src&&(entry.photoMode||'day')===tdMode&&(!entry.legacyFile||!files.has(folder+'/'+entry.legacyFile))).map(entry=>['builtin:'+entry.file,entry]));
-  const art=!files.has(gallery.fixedFile)&&scenerySource(gallery)==='illustrations'&&themeArtwork(tdMode,tdColor,today);
+  const art=!files.has(gallery.fixedFile)&&scenerySource(gallery,files.size>0)==='illustrations'&&themeArtwork(tdMode,tdColor,today);
   const chosen=art?null:D.dailyImage([...files.keys(),...builtIn.keys()],today,gallery.fixedFile);
   const file=files.get(chosen),photo=art||builtIn.get(chosen);
   if(chosen||art){

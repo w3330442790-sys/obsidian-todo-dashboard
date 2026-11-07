@@ -304,7 +304,7 @@ class TodoPlugin extends Plugin{
  }
  dashboardPreferences(){const token=this.store.token('settings','settings'),g=this.store.settings.gallery||{};new SimpleModal(this,'风景与布局设置',(root,m)=>{
   const enabled=formSelect(root,'首页风景栏',[['yes','显示'],['no','隐藏']],g.enabled===false?'no':'yes');
-  const source=formSelect(root,'风景来源',[['illustrations','跟随主题插画'],['photos','每日风景照片']],V.scenerySource(g));
+  const source=formSelect(root,'风景来源',[['illustrations','跟随主题插画'],['photos','每日风景照片']],V.scenerySource(g,this.galleryFiles().length>0));
   const folder=formField(root,'图库文件夹（库内路径）','text',this.galleryFolder());const fixed=formField(root,'固定图片（可选，留空每日轮换）','text',g.fixedFile||'');
   const height=formField(root,'风景栏高度（120–420）','number',g.height||120);height.min='120';height.max='420';
   V.el(root,'p','td-muted','主题插画随配色与模式变化。照片模式会离线轮换，固定图片优先于两种来源。');
