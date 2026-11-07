@@ -1,8 +1,10 @@
 'use strict';
-const {Plugin,ItemView,Modal,Notice,PluginSettingTab,getAllTags,Platform,requestUrl}=require('obsidian');
+const {Plugin,ItemView,Modal,Notice,PluginSettingTab,getAllTags,Platform,requestUrl,setIcon}=require('obsidian');
 const C=require('./core.cjs');const {Store}=require('./store.cjs');const V=require('./views.cjs');
 const D=require('./dashboard.cjs');const A=require('./assistant.cjs');const R=require('./reflection.cjs');const {JournalStore}=require('./journal.cjs');const {LocalCourse}=require('./local-course.cjs');const {CourseService}=require('./course.cjs');const {XftjBridge}=require('./xftj-bridge.cjs');const {ShareReader}=require('./share-reader.cjs');const {GenerationRunner}=require('./generation.cjs');const {DocumentReader}=require('./documents.cjs');
 const VIEW='todo-dashboard-view';
+const G=require('./global-theme.cjs');
+const {ExplorerOrder}=require('./explorer-order.cjs');
 const DEFAULTS={lists:[{id:'study',name:'学习',color:'#149e9a'},{id:'work',name:'工作',color:'#6488d8'},{id:'life',name:'生活',color:'#d58c48'}],stats:[],recentSort:'modified',excludedFolders:[]};
 function clone(o){return JSON.parse(JSON.stringify(o));}
 function taskDraft(seed){
@@ -94,13 +96,17 @@ class TodoPlugin extends Plugin{
   this.addCommand({id:'open-codex',name:'打开 Codex 笔记助手',callback:()=>this.open('assistant')});
   this.addCommand({id:'new-task',name:'新建任务',callback:()=>this.editTask(null,{date:C.localDate()})});
   this.addCommand({id:'quick-task',name:'快速记任务',callback:()=>this.quickTask()});
+  this.explorerOrder=new ExplorerOrder(this,{notice:message=>new Notice(message),icon:setIcon});
+  this.explorerOrder.start();
+  this.addCommand({id:'sort-files',name:'手动排序文件与文件夹',callback:()=>this.run(()=>this.explorerOrder.openRoot())});
+  if(typeof this.app.workspace.on==='function')this.registerEvent(this.app.workspace.on('css-change',()=>this.updateAppearance()));
   this.addCommand({id:'toggle-focus',name:'开始 / 暂停 / 继续专注',callback:()=>this.run(()=>this.timer?this.toggleTimer():this.startTimer(null))});
   this.addSettingTab(new SettingsTab(this.app,this));
   for(const event of ['create','modify','delete','rename'])this.registerEvent(this.app.vault.on(event,(file,oldPath)=>{if(file.path.startsWith(this.store.root+'/')||oldPath?.startsWith(this.store.root+'/')||file.path.startsWith(this.courses.root+'/')||oldPath?.startsWith(this.courses.root+'/'))this.scheduleReload(file);else if(file.extension==='md')this.scheduleRender();}));
   this.registerEvent(this.app.metadataCache.on('changed',file=>{if(!file?.path?.startsWith(this.store.root+'/'))this.scheduleRender();}));
   this.registerInterval(globalThis.setInterval(()=>this.tick(),1000));
   this.registerDomEvent(document,'visibilitychange',()=>{if(document.hidden){this.hiddenAt=Date.now();this.persistTimer();}else{const gap=this.hiddenAt?Date.now()-this.hiddenAt:0;if(gap>60000&&this.timer?.runningSince!=null)this.reviewTimer(this.hiddenAt);else this.refresh();this.hiddenAt=null;}});
-  this.app.workspace.onLayoutReady(()=>this.run(async()=>{await this.initializeData();if(this.local.autoOpen!==false)await this.open();if(this.timer)this.reviewTimer(this.timer.savedAt||Date.now());}));
+  this.app.workspace.onLayoutReady(()=>this.run(async()=>{this.explorerOrder.attach();await this.initializeData();if(this.local.autoOpen!==false)await this.open();if(this.timer)this.reviewTimer(this.timer.savedAt||Date.now());}));
  }
  async initializeData(){
   if(this.initializing)return this.initializing;
@@ -114,7 +120,7 @@ class TodoPlugin extends Plugin{
   })().catch(error=>{this.initError=error.message;this.refresh();throw error;}).finally(()=>{this.initializing=null;});
   return this.initializing;
  }
- onunload(){this.jobAbort?.abort();for(const view of this.views)view.layoutCleanup?.();clearTimeout(this.reloadHandle);clearTimeout(this.renderHandle);this.assistant?.close();this.persistTimer();}
+ onunload(){this.jobAbort?.abort();this.explorerOrder?.stop();for(const view of this.views)view.layoutCleanup?.();clearTimeout(this.reloadHandle);clearTimeout(this.renderHandle);this.assistant?.close();this.persistTimer();}
  async run(fn){try{return await fn();}catch(e){console.error('[Todo 工作台]',e);new Notice('操作未完成：'+e.message,8000);}}
  refresh(){if(this.interacting){this.pendingRefresh=true;return;}this.pendingRefresh=false;for(const v of this.views)v.render();}
  tick(today=C.localDate()){if(this.lastDay!==today){this.lastDay=today;this.refresh();}for(const view of this.views){const now=new Date();for(const e of view.contentEl.querySelectorAll('[data-now-line]'))e.style.top=(now.getHours()+now.getMinutes()/60)*Number(e.dataset.hourHeight||48)+'px';for(const e of view.contentEl.querySelectorAll('[data-timer]'))e.textContent=C.duration(this.timer?C.elapsed(this.timer):0);const totals=R.focusTotals([...(this.store.sessions?.values()||[])],this.timer);for(const e of view.contentEl.querySelectorAll('[data-focus-total]'))e.textContent=C.duration(totals[e.dataset.focusTotal]||0);}}
@@ -224,6 +230,26 @@ class TodoPlugin extends Plugin{
  async applyCompactLayout(){const token=this.store.token('settings','settings');await this.updateSettings(D.applyCompactSettings(this.store.settings),token);}
  async restoreHomeLayout(){const token=this.store.token('settings','settings');await this.updateSettings(D.restoreCompactSettings(this.store.settings),token);}
  async updateSettings(patch,token){await this.store.saveSettings({...this.store.settings,...patch},token);if(patch.gallery)await this.loadGalleryCredits();this.refresh();}
+ saveLocal(patch){
+  const write=(this.localWrite||Promise.resolve()).then(async()=>{
+   const next={...this.local,...patch};
+   await this.saveData(next);
+   this.local=next;
+  });
+  this.localWrite=write.catch(()=>{});
+  return write;
+ }
+ changeScheme(scheme){
+  if(!G.selectScheme(this.app,scheme))new Notice('请在 Obsidian 设置 → 外观中切换浅色或深色。');
+ }
+ updateAppearance(){
+  for(const view of this.views){
+   const host=view.contentEl,doc=host.ownerDocument;
+   if(host.classList.contains('td-congrong')!==G.themeIsActive(doc)){view.render();continue;}
+   const mode=doc.body.classList.contains('theme-dark')?'night':'warm';
+   for(const button of host.querySelectorAll('[data-td-scheme]'))button.setAttribute('aria-pressed',String(button.dataset.tdScheme===mode));
+  }
+ }
  galleryFolder(){return this.store.settings.gallery?.folder||this.store.root+'/风景图库';}
  galleryFiles(){const folder=this.galleryFolder();const fixed=this.store.settings.gallery?.fixedFile;return this.app.vault.getFiles().filter(f=>(f.path.startsWith(folder+'/')||f.path===fixed)&&/\.(jpe?g|png|webp)$/i.test(f.path));}
  async loadGalleryCredits(){this.galleryCredits=new Map();const f=this.app.vault.getAbstractFileByPath(this.galleryFolder()+'/SOURCE_LICENSES.json');if(!f)return;try{const list=JSON.parse(await this.app.vault.read(f));if(Array.isArray(list))for(const entry of list)if(entry&&typeof entry.file==='string')this.galleryCredits.set(entry.file,entry);}catch{}}
@@ -298,7 +324,7 @@ class TodoPlugin extends Plugin{
   const excludes=formField(root,'最近笔记排除文件夹（每行一个）','textarea',(this.store.settings.excludedFolders||[]).join('\n'));
   V.el(root,'p','td-muted','数据目录：'+this.store.root+'。此目录中的数据笔记自动排除于笔记统计和最近笔记。');
   V.el(root,'p','td-muted','EasySync：请同步整个数据目录及课程笔记/。运行中计时器保留在本机，结束后专注记录参与同步。');
-  const error=V.el(root,'p','td-error');V.button(root,'保存设置',async()=>{try{await this.updateSettings({excludedFolders:excludes.value.split('\n').map(s=>s.trim().replace(/\/$/,'')).filter(Boolean)},token);this.local.autoOpen=check.checked;await this.saveData(this.local);m.close();}catch(e){error.textContent=e.message;}},'mod-cta');
+  const error=V.el(root,'p','td-error');V.button(root,'保存设置',async()=>{try{await this.updateSettings({excludedFolders:excludes.value.split('\n').map(s=>s.trim().replace(/\/$/,'')).filter(Boolean)},token);await this.saveLocal({autoOpen:check.checked});m.close();}catch(e){error.textContent=e.message;}},'mod-cta');
  }).open();}
  persistTimer(){try{if(this.timer){this.timer.savedAt=Date.now();localStorage.setItem(this.localKey,JSON.stringify(this.timer));}else localStorage.removeItem(this.localKey);}catch{new Notice('无法保存本机计时状态，请检查存储空间');}}
  async startTimer(task){if(this.timer){new Notice('请先结束当前计时，再开始另一个任务');return;}this.timer={id:C.uid(),taskId:task?.id||null,title:task?.title||'自由专注',accumulated:0,runningSince:Date.now(),segments:[],startedAt:Date.now()};this.persistTimer();this.refresh();}

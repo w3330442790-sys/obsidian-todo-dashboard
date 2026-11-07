@@ -1,0 +1,85 @@
+/* 从容 · MIT */
+.theme-light {
+  --background-primary: #F8F4EC;
+  --background-secondary: #EFE7DB;
+  --background-primary-alt: #FFFDF8;
+  --background-secondary-alt: #F5EEE4;
+  --background-modifier-border: #D7C9BA;
+  --background-modifier-border-hover: #BCA592;
+  --background-modifier-hover: #F0E4D6;
+  --text-normal: #352C25;
+  --text-muted: #695C50;
+  --text-faint: #77695D;
+  --text-on-accent: #FFFFFF;
+  --interactive-accent: #AA4F33;
+  --interactive-accent-hover: #923E27;
+  --text-accent: #984327;
+  --text-accent-hover: #7D341F;
+  --congrong-overdue: #983B26;
+}
+
+.theme-dark {
+  --background-primary: #101821;
+  --background-secondary: #131E29;
+  --background-primary-alt: #1B2835;
+  --background-secondary-alt: #16232F;
+  --background-modifier-border: #344559;
+  --background-modifier-border-hover: #57728A;
+  --background-modifier-hover: #25394B;
+  --text-normal: #EDF3F7;
+  --text-muted: #B0C2D0;
+  --text-faint: #98ADBD;
+  --text-on-accent: #122330;
+  --interactive-accent: #8BC3F2;
+  --interactive-accent-hover: #AAD7FC;
+  --text-accent: #A4D4FB;
+  --text-accent-hover: #D0E9FC;
+  --congrong-overdue: #FFC465;
+}
+
+body {
+  --congrong-theme-active: 1;
+  --accent-h: 15;
+  --accent-s: 54%;
+  --accent-l: 43%;
+  --font-text-size: 16px;
+  --font-interface-theme: "Segoe UI", "Microsoft YaHei UI", "Noto Sans CJK SC", system-ui, sans-serif;
+  --tab-radius-active: 9px 9px 0 0;
+  --ribbon-background: var(--background-secondary);
+  --titlebar-background: var(--background-secondary);
+  --titlebar-background-focused: var(--background-secondary);
+  --tab-container-background: var(--background-secondary);
+  --tab-background-active: var(--background-primary);
+  --nav-item-radius: 6px;
+  --nav-item-background-active: var(--background-modifier-hover);
+  --nav-item-color-active: var(--text-accent);
+  --modal-background: var(--background-primary-alt);
+  --link-color: var(--text-accent);
+  --link-color-hover: var(--text-accent-hover);
+}
+
+body.theme-dark {
+  --accent-h: 207;
+  --accent-s: 80%;
+  --accent-l: 75%;
+}
+
+body:is(.theme-light,.theme-dark) :is(.td-host,.td-modal)[data-td-color][data-td-style] {
+  --td-accent: var(--interactive-accent);
+  --td-on-accent: var(--text-on-accent);
+  --td-soft: color-mix(in srgb, var(--td-accent) 11%, var(--background-primary-alt));
+  --td-shell: var(--background-primary);
+  --td-topbar: var(--background-primary);
+  --td-card-radius: 12px;
+  --td-control-radius: 8px;
+  --td-card-shadow: none;
+}
+
+.td-host :is(.td-panel,.td-focus,.td-stat,.td-chat-log) {
+  background: var(--background-primary-alt);
+}
+
+.td-host .td-nav.is-active {
+  background: var(--td-soft);
+  color: var(--text-accent);
+}

@@ -1,5 +1,13 @@
 # 从容 · Todo 工作台
 
+## 0.4.0 · 从容全局主题与手动排序
+
+- 「从容」全局主题独立安装，浅色模式为暖陶，深色模式为夜蓝。安装并启用主题后，可在工作台右上角切换，也可使用 Obsidian「设置 → 外观」。
+- 从容首页将今日待办放在左侧，快速记任务与逾期入口在标题旁。本周安排与专注计时在右侧，最近笔记、灵感速记和复盘在下排。打开「布局与外观 → 使用自定义布局」可恢复自己的模块排列。
+- 文件树工具栏新增根目录手动排序入口。右键文件夹可排列该文件夹的直接子项。拖动把手或点按上移、下移，点击「完成」保存。文件和文件夹可以穿插排列。每个目录独立记住顺序，新增条目排在末尾。顺序保存在本设备的插件设置中。
+
+构建后把 `dist/themes/从容/` 复制到库的 `.obsidian/themes/`，然后在「设置 → 外观 → 主题」选择「从容」。把 `dist/` 根目录的 `main.js`、`manifest.json`、`styles.css` 放入 `.obsidian/plugins/todo-dashboard/`。若使用压缩包，按包内同名文件夹分别复制。全局主题可以独立使用，手动排序需要启用 Todo 工作台插件。
+
 0.3.6：从首页直达逾期清单，可单项改期或多选普通任务批量改期。「快速记任务」只需标题，可安排到今天、明天或待办箱。计划子目标可创建关联任务，并查看完成情况。
 
 0.3.5：四象限的「今日处理」仅显示当天安排，含覆盖今天的跨日任务。首页内置 24 张真实风景照，按本地日期离线轮换。顶部「主题」可搭配 5 套配色与 3 种样式，设置随笔记库保存。
@@ -16,11 +24,11 @@
 
 安装包 `todo-dashboard-0.3.6.zip` 可从 GitHub Releases 下载，内部 `todo-dashboard` 文件夹包含 `main.js`、`manifest.json` 和 `styles.css`。BRAT 用户可直接检查更新。
 
-Obsidian 插件，当前版本 0.3.6。一个插件提供首页仪表盘、待办日程、灵感复盘和课程整理，支持 Windows 与安卓界面布局。数据存储于普通库文件夹，便于 EasySync 同步。
+Obsidian 插件，当前源码版本 0.4.0。一个插件提供首页仪表盘、待办日程、灵感复盘和课程整理，支持 Windows 与安卓界面布局。任务数据存储于普通库文件夹，便于 EasySync 同步。
 
 ## 安装本地测试版
 
-1. 解压 `release/todo-dashboard-0.3.6.zip`，得到 `todo-dashboard` 文件夹。
+1. 解压 `release/todo-dashboard-0.4.0.zip`，得到 `todo-dashboard` 文件夹。
 2. 将该文件夹放到你的笔记库 `.obsidian/plugins/` 下，最终应有 `.obsidian/plugins/todo-dashboard/main.js`、`manifest.json` 和 `styles.css`。
 3. 在 Obsidian 设置 → 第三方插件中关闭受限模式，刷新插件列表并启用 **Todo 工作台**。
 4. 点击侧栏仪表盘按钮，或命令面板运行 **Todo 工作台：打开首页仪表盘**。重新打开 Obsidian 后默认进入首页。
@@ -167,6 +175,8 @@ npm run build
 ```
 
 `scripts/ui-test.cjs` 为浏览器隔离测试，需通过 `PLAYWRIGHT_PATH` 指定已安装的 Playwright，并可通过 `BROWSER_PATH` 指定浏览器。它使用内存 Vault 和模拟 Obsidian API，不读取用户笔记、不连接任何云服务。截图及报告存放 `artifacts/`。
+
+`node scripts/theme-ui-test.cjs` 检查从容主题在桌面和模拟平板的首屏、配色切换和草稿保留。设置 `OBSIDIAN_TEST_EXE` 后可运行 `node scripts/obsidian-theme-test.cjs`，用独立配置和临时测试库验证 Windows Obsidian 的手动排序及重启恢复。先执行 `npm run build`。
 
 0.3.4 已验证：128 项自动测试、63 项隔离浏览器交互检查及生产打包。0.3.3 曾完成 Windows 重载验证。此前已验证：本机讯飞读取已有转写、Codex 独立只读课程 JSON 草稿、合成 PDF 正文/含图页提取与真实模型图像读取。0.1.1 已在 Windows Obsidian 1.14.5 验证重载后样式恢复；真实安卓硬件、EasySync 双端传输和冲突处理仍需按 `ACCEPTANCE.md` 验收。
 
