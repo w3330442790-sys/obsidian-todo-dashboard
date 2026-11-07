@@ -1,14 +1,15 @@
 'use strict';
-const WIDGETS=['stats','focus','inspiration','today','recent','custom','reflection','assistant','plans','week'];
-const NAMES={plans:'我的计划',week:'本周任务',stats:'概览统计',focus:'专注计时',today:'今日待办',recent:'最近笔记',custom:'笔记统计',assistant:'Codex 助手',inspiration:'灵感速记',reflection:'回顾复盘'};
+const {addDays}=require('./core.cjs');
+const WIDGETS=['stats','focus','inspiration','today','recent','custom','reflection','assistant','plans','week','trend'];
+const NAMES={plans:'我的计划',week:'本周任务',stats:'概览统计',focus:'专注计时',today:'今日待办',recent:'最近笔记',custom:'笔记统计',assistant:'Codex 助手',inspiration:'灵感速记',reflection:'回顾复盘',trend:'任务完成趋势'};
 const object=x=>x&&typeof x==='object'&&!Array.isArray(x)?x:{};
 const clamp=(n,a,b,f)=>n==null||n===''?f:Number.isFinite(Number(n))?Math.min(b,Math.max(a,Number(n))):f;
-const COMPACT_ORDER=['stats','today','inspiration','focus','recent','reflection','custom','assistant'];
-const COMPACT_SPANS={plans:6,week:6,stats:12,today:5,inspiration:4,focus:3,recent:5,reflection:4,custom:3,assistant:12};
-const COMPACT_HEIGHTS={plans:280,week:280,stats:62,today:208,inspiration:208,focus:208,recent:220,reflection:220,custom:220,assistant:64};
+const COMPACT_ORDER=['stats','today','inspiration','focus','recent','reflection','custom','plans','week','trend','assistant'];
+const COMPACT_SPANS={plans:6,week:6,stats:12,today:5,inspiration:4,focus:3,recent:5,reflection:4,custom:3,assistant:12,trend:12};
+const COMPACT_HEIGHTS={plans:280,week:280,stats:62,today:208,inspiration:208,focus:208,recent:220,reflection:220,custom:220,assistant:64,trend:210};
 const minHeight=id=>id==='stats'?50:id==='assistant'?56:180;
 const copy=value=>JSON.parse(JSON.stringify(value));
-const THEME_COLORS={classic:'从容青',ocean:'海屿蓝',forest:'松林绿',lavender:'暮山紫',terracotta:'暖陶橙'};
+const THEME_COLORS={classic:'从容青',ocean:'海屿蓝',forest:'松林绿',lavender:'暮山紫',terracotta:'暖陶橙',honey:'蜂蜜晴空',strawberry:'草莓牛奶',mint:'薄荷汽水',grape:'葡萄软糖'};
 const THEME_STYLES={classic:'经典圆角',minimal:'极简直角',soft:'柔和卡片'};
 function normalizeTheme(input){
  const {color,style}=object(input);
@@ -19,7 +20,17 @@ function applyTheme(element,input){
  element.dataset.tdColor=color;
  element.dataset.tdStyle=style;
 }
-function normalizeLayout(input){const raw=object(input),order=[...new Set((Array.isArray(raw.order)?raw.order:COMPACT_ORDER).filter(id=>WIDGETS.includes(id)))];for(const id of WIDGETS)if(!order.includes(id))order.push(id);const result={version:4,order};for(const device of ['desktop','tablet']){result[device]={};for(const id of WIDGETS){const s=object(object(raw[device])[id]),fallback=device==='tablet'&&!['stats','assistant'].includes(id)?6:COMPACT_SPANS[id];result[device][id]={span:Math.round(clamp(s.span,1,12,fallback)),height:Object.hasOwn(s,'height')?(s.height==null?null:clamp(s.height,minHeight(id),900,null)):COMPACT_HEIGHTS[id]};}}return result;}
+function showPlanning(settings){return settings.planningWidgets!==false;}
+function completionTrend(tasks,today){
+ const counts=new Map(Array.from({length:14},(_,index)=>[addDays(today,index-13),0]));
+ for(const task of tasks){
+  if(task.status==='done'&&!task.deleted&&counts.has(task.completedAt)){
+   counts.set(task.completedAt,counts.get(task.completedAt)+1);
+  }
+ }
+ return Array.from(counts,([date,count])=>({date,count}));
+}
+function normalizeLayout(input){const raw=object(input),order=[...new Set((Array.isArray(raw.order)?raw.order:COMPACT_ORDER).filter(id=>WIDGETS.includes(id)))];for(const id of WIDGETS)if(!order.includes(id))order.push(id);const result={version:4,order};for(const device of ['desktop','tablet']){result[device]={};for(const id of WIDGETS){const s=object(object(raw[device])[id]),fallback=device==='tablet'&&!['stats','assistant','trend'].includes(id)?6:COMPACT_SPANS[id];result[device][id]={span:Math.round(clamp(s.span,1,12,fallback)),height:Object.hasOwn(s,'height')?(s.height==null?null:clamp(s.height,minHeight(id),900,null)):COMPACT_HEIGHTS[id]};}}return result;}
 function compactLayout(){return normalizeLayout({});}
 function legacyLayout(){const result={version:3,order:[...WIDGETS]};for(const device of ['desktop','tablet']){result[device]={};for(const id of WIDGETS)result[device][id]={span:({stats:12,focus:4,inspiration:8,assistant:12})[id]||6,height:id==='focus'?240:null};}return result;}
 function applyCompactSettings(input){const s=object(input),previous=(object(s.compactHome).active!==false&&object(s.compactHome).previous)||{dashboard:copy(s.dashboard||legacyLayout()),gallery:copy(object(s.gallery))};return{...s,dashboard:compactLayout(),gallery:{...object(s.gallery),height:120},compactHome:{version:1,active:true,previous:copy(previous)}};}
@@ -34,7 +45,7 @@ function resizeSize(initial,dx,dy,gridWidth,gap,narrow,min=180){const unit=(grid
 function placeWidgets(view,parent,blocks,ui){
  view.layoutCleanup?.();const{el,button,select}=ui,p=view.plugin,layout=normalizeLayout(p.store.settings.dashboard),device=p.layoutDevice==='tablet'||view.contentEl.clientWidth<1100?'tablet':'desktop';const grid=el(parent,'div','td-widget-grid'+(view.state.editLayout?' is-editing':''));grid.dataset.device=device;const revision=p.store.token('settings','settings');const save=x=>p.run(()=>p.updateSettings({dashboard:normalizeLayout(x)},revision));
  let currentCleanup=null;view.layoutCleanup=()=>{currentCleanup?.();currentCleanup=null;};
- for(const id of layout.order){if(['plans','week'].includes(id)&&!p.store.settings.planningWidgets&&!view.state.editLayout)continue;const box=el(grid,'section','td-widget');box.dataset.widget=id;box.setAttribute('aria-label',NAMES[id]+'模块');const size=layout[device][id];box.style.gridColumn=`span ${size.span}`;if(size.height){box.style.height=size.height+'px';box.classList.add('has-custom-height');}
+ for(const id of layout.order){if(['plans','week'].includes(id)&&!showPlanning(p.store.settings)&&!view.state.editLayout)continue;const box=el(grid,'section','td-widget');box.dataset.widget=id;box.setAttribute('aria-label',NAMES[id]+'模块');const size=layout[device][id];box.style.gridColumn=`span ${size.span}`;if(size.height){box.style.height=size.height+'px';box.classList.add('has-custom-height');}
   if(view.state.editLayout){const controls=el(box,'div','td-widget-controls');const grip=button(controls,'⠿ '+NAMES[id],()=>{},'td-widget-grip');grip.setAttribute('aria-label','拖动 '+NAMES[id]);grip.title='拖动换位，方向键移动，Esc 取消';button(controls,'↑',()=>{const at=layout.order.indexOf(id);if(at>0)save(moveWidget(layout,id,layout.order[at-1]));},'td-small').setAttribute('aria-label','上移 '+NAMES[id]);button(controls,'↓',()=>{const at=layout.order.indexOf(id);if(at<layout.order.length-1)save(moveWidgetAfter(layout,id,layout.order[at+1]));},'td-small').setAttribute('aria-label','下移 '+NAMES[id]);select(controls,Array.from({length:12},(_,i)=>[String(i+1),(i+1)+' / 12']),String(size.span),value=>{const x=normalizeLayout(layout);x[device][id].span=Number(value);save(x);}).setAttribute('aria-label',NAMES[id]+'宽度');button(controls,'自适应',()=>{const x=normalizeLayout(layout);x[device][id].height=null;save(x);},'td-small');
    grip.addEventListener('keydown',event=>{if(!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const at=layout.order.indexOf(id);if(['ArrowUp','ArrowLeft'].includes(event.key)&&at>0)save(moveWidget(layout,id,layout.order[at-1]));else if(at<layout.order.length-1)save(moveWidgetAfter(layout,id,layout.order[at+1]));});
    grip.addEventListener('pointerdown',event=>begin(event,box,grip,'move',id,size));
@@ -56,4 +67,4 @@ function placeWidgets(view,parent,blocks,ui){
  }
  return grid;
 }
-module.exports={WIDGETS,NAMES,normalizeLayout,moveWidget,moveWidgetAfter,dailyImage,clamp,placeWidgets,dropTarget,resizeSize,compactLayout,applyCompactSettings,migrateCompactSettings,restoreCompactSettings,THEME_COLORS,THEME_STYLES,normalizeTheme,applyTheme};
+module.exports={WIDGETS,NAMES,normalizeLayout,moveWidget,moveWidgetAfter,dailyImage,clamp,placeWidgets,dropTarget,resizeSize,compactLayout,applyCompactSettings,migrateCompactSettings,restoreCompactSettings,THEME_COLORS,THEME_STYLES,normalizeTheme,applyTheme,showPlanning,completionTrend};

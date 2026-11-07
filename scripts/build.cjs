@@ -9,7 +9,7 @@ parts.push(`"../assets/scenery/credits.json":function(module){module.exports=${J
 const out=`/* Todo 工作台 · MIT */\nconst nativeRequire=require;const factories={${parts.join(',\n')}};const cache={};function localRequire(id){if(!factories[id])return nativeRequire(id);if(!cache[id]){const m={exports:{}};cache[id]=m;factories[id](m,m.exports,localRequire);}return cache[id].exports;}module.exports=localRequire('./plugin.cjs');\n`;
 new vm.Script(out);fs.mkdirSync(path.join(root,'dist'),{recursive:true});
 fs.writeFileSync(path.join(root,'dist','main.js'),out);
-fs.copyFileSync(path.join(root,'manifest.json'),path.join(root,'dist','manifest.json'));fs.writeFileSync(path.join(root,'dist','styles.css'),['styles.css','styles-layout.css','styles-v3.css','styles-compact.css','styles-planning.css','styles-mobile.css','styles-theme.css','styles-congrong.css'].map(f=>fs.readFileSync(path.join(root,f),'utf8')).join('\n'));
+fs.copyFileSync(path.join(root,'manifest.json'),path.join(root,'dist','manifest.json'));fs.writeFileSync(path.join(root,'dist','styles.css'),['styles.css','styles-layout.css','styles-v3.css','styles-compact.css','styles-planning.css','styles-mobile.css','styles-theme.css','styles-congrong.css','styles-bright.css'].map(f=>fs.readFileSync(path.join(root,f),'utf8')).join('\n'));
 const themeDir=path.join(root,'theme');
 const theme=JSON.parse(fs.readFileSync(path.join(themeDir,'manifest.json'),'utf8'));
 const themeOut=path.join(root,'dist','themes',theme.name);

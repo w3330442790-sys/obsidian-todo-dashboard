@@ -92,7 +92,6 @@ function themeWeek(view,target,all,today){
  taskList(view,scroll,sortTasks(all.filter(t=>C.taskOnDate(t,date))),'这一天暂无安排');
 }
 function placeThemeHome(parent,blocks,includePlans){
- const grid=el(parent,'div','td-theme-home-grid');
  const ids=['today','week','focus','recent','inspiration','reflection'];
  const add=(target,id)=>{
   const box=el(target,'section','td-widget');
@@ -100,17 +99,52 @@ function placeThemeHome(parent,blocks,includePlans){
   box.setAttribute('aria-label',D.NAMES[id]+'模块');
   blocks[id](el(box,'div','td-widget-body'));
  };
+ const overview=el(parent,'div','td-theme-home-overview');
+ if(includePlans)add(overview,'plans');
+ const stats=el(overview,'div','td-theme-home-stats');
+ add(stats,'stats');
+ add(stats,'custom');
+ const grid=el(parent,'div','td-theme-home-grid');
  for(const id of ids)add(grid,id);
+ const trend=el(parent,'div','td-theme-home-trend');
+ add(trend,'trend');
  const details=el(parent,'details','td-theme-home-more');
- el(details,'summary','','计划、统计与助手');
- const more=el(details,'div','td-theme-home-secondary');
- for(const id of [...(includePlans?['plans']:[]),'stats','custom','assistant'])add(more,id);
+ el(details,'summary','','Codex 助手');
+ add(el(details,'div','td-theme-home-secondary'),'assistant');
+}
+function renderCompletionTrend(parent,tasks,today){
+ const days=D.completionTrend(tasks,today);
+ const total=days.reduce((sum,day)=>sum+day.count,0);
+ const peak=Math.max(1,...days.map(day=>day.count));
+ const box=panel(parent,'近 14 天任务完成趋势');
+ el(box,'p','td-trend-total',`共完成 ${total} 项 · 按实际完成日期`);
+ const scroll=el(box,'div','td-trend-scroll');
+ scroll.tabIndex=0;
+ scroll.setAttribute('role','region');
+ scroll.setAttribute('aria-label','近 14 天每日完成数');
+ const chart=el(scroll,'table','td-trend-chart');
+ chart.setAttribute('aria-label','任务完成趋势');
+ const dates=el(el(chart,'thead'),'tr');
+ const counts=el(el(chart,'tbody'),'tr');
+ for(const {date,count} of days){
+  const header=el(dates,'th','td-trend-date');
+  header.scope='col';
+  el(header,'time','',date.slice(5)).dateTime=date;
+  const column=el(counts,'td','td-trend-day');
+  column.title=`${date} · 完成 ${count} 项`;
+  const barArea=el(column,'div','td-trend-bar-area');
+  const bar=el(barArea,'span','td-trend-bar');
+  bar.style.height=`${count/peak*100}%`;
+  el(barArea,'strong','td-trend-count',String(count));
+ }
 }
 function home(view,parent){
  const p=view.plugin,today=C.localDate(),all=[...p.store.tasks.values()].filter(t=>!t.deleted),tasks=sortTasks(all.filter(t=>C.taskOnDate(t,today)));
  const overdue=all.filter(t=>isOverdue(t,today));
  const themeHome=G.usesThemeHome(view.contentEl.classList.contains('td-congrong'),p.store.settings);
  const compact=themeHome||p.store.settings.compactHome?.active!==false;parent.classList.toggle('td-compact',compact);parent.classList.toggle('td-theme-home',themeHome);const gallery=p.store.settings.gallery||{};
+ const includePlans=D.showPlanning(p.store.settings);
+ let scenerySrc='';
  if(gallery.enabled!==false){
   const banner=el(parent,'section','td-scenery');if(!themeHome)banner.style.height=D.clamp(gallery.height,120,420,compact?120:210)+'px';
   const files=new Map(p.galleryFiles().map(f=>[f.path,f]));
@@ -118,7 +152,7 @@ function home(view,parent){
   const builtIn=new Map(scenery.filter(entry=>entry.src&&(!entry.legacyFile||!files.has(folder+'/'+entry.legacyFile))).map(entry=>['builtin:'+entry.file,entry]));
   const chosen=D.dailyImage([...files.keys(),...builtIn.keys()],today,gallery.fixedFile);
   const file=files.get(chosen),photo=builtIn.get(chosen);
-  if(chosen){const image=el(banner,'img','td-scenery-image');image.alt='每日风景';image.src=photo?.src||p.app.vault.getResourcePath(file);image.addEventListener('error',()=>{image.hidden=true;banner.classList.add('is-missing');});}
+  if(chosen){const image=el(banner,'img','td-scenery-image');image.alt='每日风景';scenerySrc=photo?.src||p.app.vault.getResourcePath(file);image.src=scenerySrc;image.addEventListener('error',()=>{image.hidden=true;banner.classList.add('is-missing');});}
   const caption=el(banner,'div','td-scenery-caption');el(caption,'span','td-scenery-date',new Intl.DateTimeFormat('zh-CN',{month:'long',day:'numeric',weekday:'long'}).format(new Date()));el(caption,'strong','',themeHome?'从容 · Todo 工作台':photo?.label||(chosen?'今天，也留一点时间看风景。':'把喜欢的风景，留在这里。'));
   const credit=photo||(file?.path.startsWith(folder+'/')&&p.galleryCredits?.get(file.path.slice(folder.length+1)));
   if(credit)button(banner,`${credit.attribution||credit.author} · ${credit.license}`,()=>photo?p.sceneryCredit(photo):p.app.workspace.openLinkText(folder+'/SOURCE_LICENSES.md','',false),'td-scenery-credit');
@@ -132,7 +166,7 @@ function home(view,parent){
  }
  const tools=el(actions,'details','td-layout-tools');el(tools,'summary','','布局与外观');const menu=el(tools,'div','td-layout-menu');
  if(view.contentEl.classList.contains('td-congrong'))button(menu,themeHome?'使用自定义布局':'应用从容布局',()=>p.run(()=>p.updateSettings({congrongHome:!themeHome})),'td-link');
- button(menu,p.store.settings.planningWidgets?(themeHome?'隐藏计划模块':'隐藏计划与本周模块'):(themeHome?'显示计划模块':'显示计划与本周模块'),()=>p.run(()=>p.updateSettings({planningWidgets:!p.store.settings.planningWidgets})),'td-link');
+ button(menu,includePlans?(themeHome?'隐藏计划模块':'隐藏计划与本周模块'):(themeHome?'显示计划模块':'显示计划与本周模块'),()=>p.run(()=>p.updateSettings({planningWidgets:!includePlans})),'td-link');
  if(!themeHome){
   button(menu,'应用紧凑推荐布局',()=>p.run(()=>p.applyCompactLayout()),'td-link');
   if(p.store.settings.compactHome?.previous)button(menu,'恢复之前布局',()=>p.run(()=>p.restoreHomeLayout()),'td-link');
@@ -143,7 +177,8 @@ function home(view,parent){
  if(!themeHome&&view.state.editLayout)el(parent,'p','td-layout-hint','拖动卡片标题换位，拖右下角调整大小；靠近边缘自动滚动，Esc 取消。');
  const blocks={
   stats:target=>{const stats=el(target,'div','td-stats');for(const [label,value,detail,action]of metrics){const card=el(stats,'div','td-stat');el(card,'div','td-muted',label);el(card,'strong','',value);if(action)button(card,detail,action,'td-link');else el(card,'small','td-muted',detail);}},
-  plans:target=>P.summary(view,target,{el,button,select,heading,panel}),
+  plans:target=>P.summary(view,target,{el,button,select,heading,panel},scenerySrc),
+  trend:target=>renderCompletionTrend(target,all,today),
   week:target=>{if(themeHome)return themeWeek(view,target,all,today);const box=panel(target,'本周任务',h=>button(h,'周时间轴 ↗',()=>{view.state.timelineMode='week';view.go('timeline');},'td-link')),scroll=el(box,'div','td-task-scroll'),days=C.weekDates(today);taskList(view,scroll,sortTasks(all.filter(t=>days.some(d=>C.taskOnDate(t,d)))),'本周还没有任务');},
   focus:target=>focusBar(view,target,themeHome),
   inspiration:target=>J.renderInspiration(view,target,{el,button,select,panel}),
@@ -168,7 +203,7 @@ function home(view,parent){
   custom:target=>{const custom=panel(target,'我的笔记统计',h=>button(h,'＋ 添加统计',()=>p.editStat(),'td-link'));const cards=el(custom,'div','td-custom-stats');if(!(p.store.settings.stats||[]).length)empty(cards,'添加文件夹或标签，观察知识积累。');for(const stat of p.store.settings.stats||[]){const matches=notes.filter(f=>C.matchesNote(f.path,p.noteTags(f),stat));const card=el(cards,'div','td-custom-stat');button(card,`${stat.kind==='tag'?'#':'▱'} ${stat.value}`,()=>p.showNotes(stat.value,matches),'td-link');el(card,'strong','',matches.length);button(card,'移除',()=>p.run(()=>p.updateSettings({stats:p.store.settings.stats.filter(x=>x.id!==stat.id)})),'td-small td-muted');}},
   assistant:target=>compact?H.renderAssistantSummary(view,target,{el,button,panel}):A.renderAssistant(view,target,{el,button,select,heading,panel,empty})
  };
- if(themeHome)placeThemeHome(parent,blocks,p.store.settings.planningWidgets);
+ if(themeHome)placeThemeHome(parent,blocks,includePlans);
  else D.placeWidgets(view,parent,blocks,{el,button,select});
 }
 function calendar(view,parent){
@@ -242,7 +277,8 @@ function render(view){
    option.dataset.tdScheme=scheme;
    option.setAttribute('aria-pressed',String(dark===(scheme==='night')));
   }
- }else button(aside,'主题',()=>p.themePreferences(),'td-theme-button').setAttribute('aria-label','工作台主题');
+ }
+ button(aside,'主题',()=>p.themePreferences(),'td-theme-button').setAttribute('aria-label','工作台主题');
  const footer=el(aside,'div','td-sidebar-footer');el(footer,'span','td-muted','数据保存在笔记库');button(footer,'刷新数据',()=>p.run(()=>p.reload()),'td-link');button(footer,'偏好设置',()=>p.preferences(),'td-link');
  const main=el(root,'main','td-main');const errors=[...p.store.errors,...(p.journal?.errors||[]),...(p.courses?.errors||[])];if(errors.length){const banner=el(main,'div','td-warning');el(banner,'span','',`${errors.length} 个数据文件需要检查，原文件已保留。`);button(banner,'查看详情',()=>p.showErrors(),'td-link');}
  if(view.state.page==='home')home(view,main);else if(view.state.page==='journal')J.renderJournal(view,main,{el,button,select,panel,heading,empty});else if(view.state.page==='courses')require('./course-view.cjs').renderCourses(view,main,{el,button,select,panel,heading,empty});else if(view.state.page==='assistant')A.renderAssistant(view,main,{el,button,select,heading,panel,empty});else{workspace(view,main);focusBar(view,main);}

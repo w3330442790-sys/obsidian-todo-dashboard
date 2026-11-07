@@ -8,7 +8,34 @@ test('malformed layout falls back to defaults',()=>{assert.equal(D.normalizeLayo
 const items=[{id:'a',left:0,right:100,top:0,bottom:100},{id:'b',left:120,right:220,top:0,bottom:100},{id:'c',left:0,right:220,top:120,bottom:220}];
 test('drop placement resolves before, after, row gaps, and final empty space',()=>{assert.deepEqual(D.dropTarget(items,20,40),{id:'a',after:false,edge:'left'});assert.deepEqual(D.dropTarget(items,210,40),{id:'b',after:true,edge:'right'});assert.deepEqual(D.dropTarget(items,80,115),{id:'c',after:false,edge:'top'});assert.deepEqual(D.dropTarget(items,30,300),{id:'c',after:true,edge:'bottom'});assert.equal(D.dropTarget([],0,0),null);});
 test('resize snaps each grid column, bounds heights and keeps narrow width',()=>{assert.deepEqual(D.resizeSize({span:4,height:240,width:400},100,50,1200,0,false),{span:5,height:290});assert.deepEqual(D.resizeSize({span:4,height:240,width:400},1200,-300,1200,0,false),{span:12,height:180});assert.deepEqual(D.resizeSize({span:4,height:240,width:400},300,10,500,12,true),{span:4,height:250});});
-test('compact preset aligns two 5/4/3 desktop rows with short strips and tablet pairs',()=>{const x=D.compactLayout();assert.deepEqual(x.order,['stats','today','inspiration','focus','recent','reflection','custom','assistant','plans','week']);assert.deepEqual(['today','inspiration','focus'].map(id=>x.desktop[id].span),[5,4,3]);assert.deepEqual(['recent','reflection','custom'].map(id=>x.desktop[id].span),[5,4,3]);assert.ok(x.desktop.stats.height<80);assert.ok(x.desktop.assistant.height<80);assert.equal(x.tablet.today.span,6);assert.equal(x.tablet.recent.span,6);});
+test('compact preset aligns two 5/4/3 desktop rows with short strips and tablet pairs',()=>{const x=D.compactLayout();assert.deepEqual(x.order,['stats','today','inspiration','focus','recent','reflection','custom','plans','week','trend','assistant']);assert.deepEqual(['today','inspiration','focus'].map(id=>x.desktop[id].span),[5,4,3]);assert.deepEqual(['recent','reflection','custom'].map(id=>x.desktop[id].span),[5,4,3]);assert.ok(x.desktop.stats.height<80);assert.ok(x.desktop.assistant.height<80);assert.equal(x.tablet.today.span,6);assert.equal(x.tablet.recent.span,6);});
 test('compact migration is idempotent, preserves data and restores exact old layout/banner preferences',()=>{const old={lists:[{id:'x'}],stats:[],dashboard:{order:['recent','focus'],desktop:{focus:{span:7,height:410}}},gallery:{height:310,enabled:false,fixedFile:'mine.jpg'}};const original=JSON.parse(JSON.stringify(old)),next=D.migrateCompactSettings(old);assert.deepEqual(old,original);assert.equal(next.gallery.height,120);assert.equal(next.gallery.enabled,false);assert.equal(next.gallery.fixedFile,'mine.jpg');assert.deepEqual(next.lists,old.lists);assert.equal(D.migrateCompactSettings(next),next);const restored=D.restoreCompactSettings(next);assert.deepEqual(restored.dashboard,old.dashboard);assert.deepEqual(restored.gallery,old.gallery);assert.equal(restored.compactHome.active,false);assert.equal(D.migrateCompactSettings(restored),restored);assert.equal(D.applyCompactSettings(restored).compactHome.active,true);});
 test('short strip sizes survive normalization while normal cards retain readable minima',()=>{const x=D.normalizeLayout({desktop:{stats:{height:60},assistant:{height:66},recent:{height:10}}});assert.equal(x.desktop.stats.height,60);assert.equal(x.desktop.assistant.height,66);assert.equal(x.desktop.recent.height,180);});
 test('re-entering compact mode backs up intervening legacy edits without replacing active backup',()=>{const first=D.migrateCompactSettings({dashboard:{desktop:{today:{span:7,height:400}}},gallery:{height:310}}),legacy=D.restoreCompactSettings(first);legacy.dashboard.desktop.today.height=500;legacy.gallery.height=350;const second=D.applyCompactSettings(legacy),again=D.applyCompactSettings(second),restored=D.restoreCompactSettings(again);assert.equal(restored.dashboard.desktop.today.height,500);assert.equal(restored.gallery.height,350);});
+test('new dashboards show planning by default and honor explicit opt-out',()=>{
+ assert.equal(D.showPlanning({}),true);
+ assert.equal(D.showPlanning({planningWidgets:false}),false);
+ assert.ok(D.compactLayout().order.indexOf('plans')<D.compactLayout().order.indexOf('assistant'));
+});
+test('completion trend uses actual completion date and includes today and the previous 13 days',()=>{
+ const trend=D.completionTrend([
+  {status:'done',date:'2026-09-01',completedAt:'2026-10-25'},
+  {status:'done',completedAt:'2026-11-07'},
+  {status:'done',completedAt:'2026-11-07'},
+  {status:'done',completedAt:'2026-11-07',deleted:true},
+  {status:'open',completedAt:'2026-11-07'},
+  {status:'done',completedAt:'2026-10-24'},
+  {status:'done',completedAt:'2026-11-08'},
+  {status:'done',date:'2026-11-06'}
+ ],'2026-11-07');
+ assert.equal(trend.length,14);
+ assert.deepEqual(trend[0],{date:'2026-10-25',count:1});
+ assert.deepEqual(trend.at(-2),{date:'2026-11-06',count:0});
+ assert.deepEqual(trend.at(-1),{date:'2026-11-07',count:2});
+ assert.equal(trend.reduce((sum,day)=>sum+day.count,0),3);
+});
+test('bright workspace presets are persisted by the existing theme normalizer',()=>{
+ for(const color of ['honey','strawberry','mint','grape']){
+  assert.deepEqual(D.normalizeTheme({color,style:'soft'}),{color,style:'soft'});
+ }
+});

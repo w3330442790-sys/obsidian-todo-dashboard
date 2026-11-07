@@ -12,7 +12,34 @@ function editor(view,original,ui){
  }onClose(){this.contentEl.replaceChildren();}}
  new PlanModal(p.app).open();
 }
-function card(view,parent,plan,ui,summary=false){const{el,button}=ui,p=view.plugin,progress=C.planProgress(plan),box=el(parent,'article','td-plan-card');
+function summaryHero(box,plan,progress,ui,scenerySrc,vault){
+ const {el,button,edit}=ui;
+ const hero=el(box,'div','td-plan-hero');
+ const cover=plan.cover&&vault.getAbstractFileByPath(plan.cover);
+ const imageSrc=cover?vault.getResourcePath(cover):scenerySrc;
+ if(imageSrc){
+  const image=el(hero,'img','td-plan-hero-image');
+  image.alt='';
+  image.onerror=()=>{image.hidden=true;};
+  image.src=imageSrc;
+ }
+ const surface=el(hero,'div','td-plan-hero-surface');
+ const info=el(surface,'div','td-plan-hero-info');
+ button(info,plan.title,edit,'td-plan-title');
+ const today=C.localDate();
+ const countdown=plan.endDate<today?'已到期':plan.endDate===today?'今天到期':`剩余 ${progress.remaining} 天`;
+ el(info,'strong','td-plan-countdown',countdown);
+ el(info,'small','td-muted',`${plan.endDate} 截止 · 自然进度 ${progress.natural}%`);
+ const ring=el(surface,'div','td-plan-ring');
+ ring.setAttribute('role','progressbar');
+ ring.setAttribute('aria-label',plan.title+' 完成进度');
+ ring.setAttribute('aria-valuenow',String(progress.actual));
+ ring.setAttribute('aria-valuemin','0');
+ ring.setAttribute('aria-valuemax','100');
+ ring.style.setProperty('--td-plan-progress',progress.actual+'%');
+ el(ring,'strong','',progress.actual+'%');
+}
+function card(view,parent,plan,ui,summary=false,scenerySrc=''){const{el,button}=ui,p=view.plugin,progress=C.planProgress(plan),box=el(parent,'article','td-plan-card');
  const linked=new Map();
  if(!summary){
   box.dataset.planId=plan.id;
@@ -24,8 +51,13 @@ function card(view,parent,plan,ui,summary=false){const{el,button}=ui,p=view.plug
   }
  }
  if(plan.cover&&!summary){const file=p.app.vault.getAbstractFileByPath(plan.cover);if(file){const image=el(box,'img','td-plan-cover');image.src=p.app.vault.getResourcePath(file);image.alt=plan.title;image.onerror=()=>image.hidden=true;}}
- const top=el(box,'div','td-plan-card-heading');button(top,plan.title,()=>editor(view,plan,ui),'td-plan-title');el(top,'small','td-muted',`${plan.startDate} — ${plan.endDate}`);el(box,'span','td-plan-days',plan.status==='done'?'已完成':`${plan.endDate<C.localDate()?'已到期':'还剩 '+progress.remaining+' 天'}`);if(plan.description&&!summary)el(box,'p','td-muted',plan.description);
- const label=el(box,'div','td-plan-progress-label');el(label,'span','',`自然进度 ${progress.natural}% · ${progress.delta>=0?'领先':'落后'} ${Math.abs(progress.delta)}%`);el(label,'strong','',`${progress.actual}%`);const track=el(box,'div','td-plan-track');track.setAttribute('role','progressbar');track.setAttribute('aria-label',plan.title+' 完成进度');track.setAttribute('aria-valuenow',String(progress.actual));track.setAttribute('aria-valuemin','0');track.setAttribute('aria-valuemax','100');const bar=el(track,'div','td-plan-fill');bar.style.width=progress.actual+'%';const marker=el(track,'span','td-plan-natural');marker.style.left=progress.natural+'%';
+ if(summary){
+  box.classList.add('td-plan-card-summary');
+  summaryHero(box,plan,progress,{el,button,edit:()=>editor(view,plan,ui)},scenerySrc,p.app.vault);
+ }else{
+  const top=el(box,'div','td-plan-card-heading');button(top,plan.title,()=>editor(view,plan,ui),'td-plan-title');el(top,'small','td-muted',`${plan.startDate} — ${plan.endDate}`);el(box,'span','td-plan-days',plan.status==='done'?'已完成':`${plan.endDate<C.localDate()?'已到期':'还剩 '+progress.remaining+' 天'}`);if(plan.description)el(box,'p','td-muted',plan.description);
+  const label=el(box,'div','td-plan-progress-label');el(label,'span','',`自然进度 ${progress.natural}% · ${progress.delta>=0?'领先':'落后'} ${Math.abs(progress.delta)}%`);el(label,'strong','',`${progress.actual}%`);const track=el(box,'div','td-plan-track');track.setAttribute('role','progressbar');track.setAttribute('aria-label',plan.title+' 完成进度');track.setAttribute('aria-valuenow',String(progress.actual));track.setAttribute('aria-valuemin','0');track.setAttribute('aria-valuemax','100');const bar=el(track,'div','td-plan-fill');bar.style.width=progress.actual+'%';const marker=el(track,'span','td-plan-natural');marker.style.left=progress.natural+'%';
+ }
  for(const g of plan.goals){
   const row=el(box,'div','td-plan-goal');
   row.dataset.goalId=g.id;
@@ -53,5 +85,5 @@ function card(view,parent,plan,ui,summary=false){const{el,button}=ui,p=view.plug
  return box;
 }
 function renderPlans(view,parent,ui){const{el,button,heading}=ui;heading(parent,'GROW AT YOUR PACE','计划','把长期目标，拆成每天看得见的进步。');const nav=el(parent,'div','td-work-switcher');for(const[key,label]of [['open','进行中 🚀'],['done','已完成 🏆']])button(nav,label,()=>{view.state.planStatus=key;view.render();},(view.state.planStatus||'open')===key?'is-active':'');button(nav,'＋ 新建计划',()=>editor(view,null,ui),'mod-cta');const plans=[...(view.plugin.store.plans?.values()||[])].filter(x=>!x.deleted&&x.status===(view.state.planStatus||'open'));if(!plans.length)el(parent,'div','td-empty','这里还没有计划，创建一个目标开始吧。');const grid=el(parent,'div','td-plans-grid');for(const p of plans)card(view,grid,p,ui);}
-function summary(view,parent,ui){const{el,select,button,panel}=ui,box=panel(parent,'我的计划',h=>button(h,'全部计划 ↗',()=>view.go('plans'),'td-link')),plans=[...(view.plugin.store.plans?.values()||[])].filter(p=>!p.deleted&&p.status==='open');if(!plans.length){button(box,'＋ 创建计划',()=>editor(view,null,ui));return;}const selected=plans.find(p=>p.id===view.plugin.store.settings.homePlanId)||plans[0];select(box,plans.map(p=>[p.id,p.title]),selected.id,id=>view.plugin.run(()=>view.plugin.updateSettings({homePlanId:id}))).setAttribute('aria-label','首页显示的计划');const scroll=el(box,'div','td-plan-summary-scroll');card(view,scroll,selected,ui,true);}
+function summary(view,parent,ui,scenerySrc){const{el,select,button,panel}=ui,box=panel(parent,'我的计划',h=>button(h,'全部计划 ↗',()=>view.go('plans'),'td-link')),plans=[...(view.plugin.store.plans?.values()||[])].filter(p=>!p.deleted&&p.status==='open');if(!plans.length){button(box,'＋ 创建计划',()=>editor(view,null,ui));return;}const selected=plans.find(p=>p.id===view.plugin.store.settings.homePlanId)||plans[0];select(box,plans.map(p=>[p.id,p.title]),selected.id,id=>view.plugin.run(()=>view.plugin.updateSettings({homePlanId:id}))).setAttribute('aria-label','首页显示的计划');const scroll=el(box,'div','td-plan-summary-scroll');card(view,scroll,selected,ui,true,scenerySrc);}
 module.exports={renderPlans,summary,editor,card};

@@ -1,0 +1,255 @@
+/* @settings
+
+name: Todo 工作台
+id: todo-dashboard-appearance
+settings:
+  -
+    id: td-style-accent-enabled
+    title: 自定义主色
+    description: 开启后使用下方主色覆盖工作台配色的强调色。
+    type: class-toggle
+    default: false
+  -
+    id: td-style-accent
+    title: 主色
+    type: variable-themed-color
+    format: hex
+    default-light: '#235b97'
+    default-dark: '#a5d2ff'
+  -
+    id: td-style-card-radius
+    title: 卡片圆角
+    type: variable-number-slider
+    format: px
+    default: 16
+    min: 0
+    max: 30
+    step: 1
+  -
+    id: td-style-scenery-opacity
+    title: 风景卡片不透明度
+    description: 数值越小，计划卡片背后的风景越明显。
+    type: variable-number-slider
+    format: '%'
+    default: 86
+    min: 76
+    max: 100
+    step: 1
+  -
+    id: td-style-no-motion
+    title: 减弱卡片动效
+    type: class-toggle
+    default: false
+
+*/
+
+body.td-style-accent-enabled.theme-light :is(.td-host,.td-modal)[data-td-color][data-td-style] {
+  --td-accent: color-mix(in srgb, var(--td-style-accent, #235b97) 42%, #192639);
+  --td-on-accent: white;
+}
+
+body.td-style-accent-enabled.theme-dark :is(.td-host,.td-modal)[data-td-color][data-td-style] {
+  --td-accent: color-mix(in srgb, var(--td-style-accent, #a5d2ff) 42%, #eff4ff);
+  --td-on-accent: #17202c;
+}
+
+:is(.td-host,.td-modal)[data-td-style] {
+  --td-radius: var(--td-style-card-radius, var(--td-preset-radius, var(--td-card-radius, 16px)));
+  --td-pop: var(--td-palette-pop, var(--td-accent));
+  --td-panel-tint: color-mix(in srgb, var(--td-pop) 7%, var(--background-primary));
+}
+
+:is(.td-host,.td-modal)[data-td-style] :is(.td-panel,.td-stat,.td-focus,.td-scenery,.td-plan-card,.td-chat-log) {
+  border-radius: var(--td-radius);
+}
+
+.td-host[data-td-style] :is(.td-widget .td-panel,.td-stat) {
+  background: var(--td-panel-tint);
+}
+
+.td-host :is(.td-panel-heading h3,.td-section-heading h2,.td-stat > strong),
+.td-host[data-td-color]:not([data-td-color=classic]) .td-nav.is-active,
+.td-modal .td-section-heading h2 {
+  color: var(--td-accent);
+}
+
+.td-host table th, .td-modal table th {
+  background: color-mix(in srgb, var(--td-pop) 22%, var(--background-primary));
+  color: var(--text-normal);
+}
+
+.td-host table tbody tr:nth-child(even), .td-modal table tbody tr:nth-child(even) {
+  background: var(--td-panel-tint);
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  body:not(.td-style-no-motion) .td-host .td-widget :is(.td-panel,.td-stat) {
+    transition: border-color 160ms ease;
+  }
+  .td-host .td-widget :is(.td-panel,.td-stat):hover {
+    border-color: color-mix(in srgb, var(--td-accent) 40%, var(--background-modifier-border));
+  }
+}
+
+.td-theme-home-overview, .td-theme-home-stats {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.td-theme-home-overview {
+  margin: 0 0 10px;
+}
+
+.td-theme-home-overview:has(> [data-widget=plans]) {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+}
+
+.td-theme-home-overview .td-panel {
+  height: 100%;
+}
+
+.td-theme-home-overview [data-widget=plans] .td-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.td-theme-home-overview .td-plan-summary-scroll {
+  max-height: 158px;
+}
+
+.td-theme-home-stats .td-stat {
+  min-height: 52px;
+}
+
+.td-theme-home-stats .td-stat > :is(small,.td-link) {
+  white-space: normal;
+  line-height: 1.3;
+}
+
+.td-theme-home-stats .td-custom-stats {
+  max-height: 88px;
+}
+
+.td-theme-home-trend { margin-top: 10px; }
+
+.td-host .td-plan-summary-scroll .td-plan-card-summary {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+.td-plan-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--td-radius);
+  background: var(--td-panel-tint);
+}
+
+.td-plan-hero-image {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  inset: 0;
+  object-fit: cover;
+}
+
+.td-plan-hero-surface {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 96px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--td-panel-tint) var(--td-style-scenery-opacity, 86%), transparent);
+}
+
+.td-plan-hero-info {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.td-plan-hero-info > .td-plan-title {
+  justify-self: start;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.td-plan-countdown { font-size: 20px; color: var(--td-accent); }
+
+.td-plan-ring {
+  display: grid;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  flex: 0 0 66px;
+  border-radius: 50%;
+  background: conic-gradient(var(--td-accent) var(--td-plan-progress), var(--background-modifier-border) 0);
+}
+
+.td-plan-ring strong {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 15px;
+}
+
+.td-plan-card-summary .td-plan-goal { margin-inline: 6px; }
+
+.td-trend-total { margin: 0 0 7px; color: var(--text-muted); font-size: 12px; }
+.td-trend-scroll { overflow: auto; min-height: 0; }
+
+.td-trend-chart {
+  width: 100%;
+  min-width: 480px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 3px 0;
+  margin: 0;
+}
+
+.td-trend-chart :is(th,td) { border: 0; padding: 1px; text-align: center; }
+.td-trend-chart th { border-radius: 4px; }
+.td-trend-bar-area { position: relative; height: 66px; margin: 15px 0 4px; }
+
+.td-trend-bar {
+  position: absolute;
+  inset: auto 12% 0;
+  min-height: 2px;
+  border-radius: 5px 5px 0 0;
+  background: linear-gradient(var(--td-accent), var(--td-pop));
+}
+
+.td-trend-count, .td-trend-date { font-size: 10px; }
+.td-trend-count { position: relative; top: -16px; color: var(--text-normal); }
+.td-trend-date { color: var(--text-muted); white-space: nowrap; }
+
+@container todo-workspace (max-width: 850px) {
+  .td-theme-home-overview:has(> [data-widget=plans]) { grid-template-columns: minmax(0, 1fr); }
+}
+
+@container todo-workspace (max-width: 650px) {
+  .td-theme-home-overview > .td-widget,
+  .td-theme-home-stats > .td-widget { grid-column: auto !important; }
+}
+
+@container todo-workspace (max-width: 560px) {
+  .td-trend-chart { width: calc(100% - 2px); min-width: 0; border-spacing: 1px 0; }
+  .td-trend-chart th { height: 16px; position: relative; }
+  .td-trend-chart time { display: block; }
+  .td-trend-chart th:not(:is(:first-child,:nth-child(5),:nth-child(9),:last-child)) time {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .td-trend-chart th:last-child time { position: relative; right: 5px; }
+}

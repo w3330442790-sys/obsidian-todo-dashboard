@@ -1,16 +1,38 @@
 /* Theme tokens stay inside the workspace and its dialogs. */
-:is(.td-host,.td-modal)[data-td-color="ocean"] { --td-accent: #1f63a8; --td-accent-dark: #8bc4ff; }
-:is(.td-host,.td-modal)[data-td-color="forest"] { --td-accent: #34643d; --td-accent-dark: #9ccc9f; }
-:is(.td-host,.td-modal)[data-td-color="lavender"] { --td-accent: #6d4a99; --td-accent-dark: #cdb5ff; }
-:is(.td-host,.td-modal)[data-td-color="terracotta"] { --td-accent: #994b30; --td-accent-dark: #ffb093; }
+:is(.td-host,.td-modal)[data-td-color="ocean"] { --td-preset-accent: #1f63a8; --td-accent-dark: #8bc4ff; }
+:is(.td-host,.td-modal)[data-td-color="forest"] { --td-preset-accent: #34643d; --td-accent-dark: #9ccc9f; }
+:is(.td-host,.td-modal)[data-td-color="lavender"] { --td-preset-accent: #6d4a99; --td-accent-dark: #cdb5ff; }
+:is(.td-host,.td-modal)[data-td-color="terracotta"] { --td-preset-accent: #994b30; --td-accent-dark: #ffb093; }
+:is(.td-host,.td-modal)[data-td-color="honey"] {
+  --td-preset-accent: #235b97;
+  --td-accent-dark: #a5d2ff;
+  --td-palette-pop: #ffd66b;
+}
+:is(.td-host,.td-modal)[data-td-color="strawberry"] {
+  --td-preset-accent: #a13962;
+  --td-accent-dark: #ffadc9;
+  --td-palette-pop: #ffa9bc;
+}
+:is(.td-host,.td-modal)[data-td-color="mint"] {
+  --td-preset-accent: #186951;
+  --td-accent-dark: #94e6c5;
+  --td-palette-pop: #87e6c1;
+}
+:is(.td-host,.td-modal)[data-td-color="grape"] {
+  --td-preset-accent: #6544a2;
+  --td-accent-dark: #cdb9ff;
+  --td-palette-pop: #cdb0fa;
+}
 
-:is(.td-host,.td-modal)[data-td-color]:not([data-td-color="classic"]) {
+:is(body,body.theme-light,body.theme-dark) :is(.td-host,.td-modal)[data-td-color][data-td-style]:not([data-td-color="classic"]) {
+  --td-accent: var(--td-preset-accent);
+  --td-on-accent: white;
   --td-soft: color-mix(in srgb, var(--td-accent) 10%, var(--background-primary));
   --td-shell: color-mix(in srgb, var(--td-accent) 4%, var(--background-primary));
   --td-topbar: color-mix(in srgb, var(--td-accent) 7%, var(--background-secondary));
 }
 
-.theme-dark :is(.td-host,.td-modal)[data-td-color]:not([data-td-color="classic"]) {
+body.theme-dark :is(.td-host,.td-modal)[data-td-color][data-td-style]:not([data-td-color="classic"]) {
   --td-accent: var(--td-accent-dark);
   --td-on-accent: #17202c;
 }
@@ -21,16 +43,15 @@
 .td-host .td-calendar .is-today .td-day-number { color: var(--td-on-accent, white); }
 
 :is(.td-host,.td-modal)[data-td-style="minimal"] {
-  --td-card-radius: 3px;
+  --td-preset-radius: 3px;
   --td-control-radius: 3px;
 }
 :is(.td-host,.td-modal)[data-td-style="soft"] {
-  --td-card-radius: 20px;
+  --td-preset-radius: 20px;
   --td-control-radius: 14px;
   --td-card-shadow: 0 4px 16px color-mix(in srgb, var(--text-normal) 9%, transparent);
 }
 :is(.td-host,.td-modal)[data-td-style]:not([data-td-style="classic"]) :is(.td-panel,.td-stat,.td-focus,.td-scenery,.td-chat-log) {
-  border-radius: var(--td-card-radius);
   box-shadow: var(--td-card-shadow, none);
 }
 :is(.td-host,.td-modal)[data-td-style]:not([data-td-style="classic"]) :is(.td-button,.td-input,.td-select):not(.td-day-number,.td-swatch,.td-calendar-task,.td-scenery-credit,.td-scenery-settings) {

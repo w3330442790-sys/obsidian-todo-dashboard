@@ -100,6 +100,7 @@ class TodoPlugin extends Plugin{
   this.explorerOrder.start();
   this.addCommand({id:'sort-files',name:'手动排序文件与文件夹',callback:()=>this.run(()=>this.explorerOrder.openRoot())});
   if(typeof this.app.workspace.on==='function')this.registerEvent(this.app.workspace.on('css-change',()=>this.updateAppearance()));
+  this.app.workspace.trigger?.('parse-style-settings');
   this.addCommand({id:'toggle-focus',name:'开始 / 暂停 / 继续专注',callback:()=>this.run(()=>this.timer?this.toggleTimer():this.startTimer(null))});
   this.addSettingTab(new SettingsTab(this.app,this));
   for(const event of ['create','modify','delete','rename'])this.registerEvent(this.app.vault.on(event,(file,oldPath)=>{if(file.path.startsWith(this.store.root+'/')||oldPath?.startsWith(this.store.root+'/')||file.path.startsWith(this.courses.root+'/')||oldPath?.startsWith(this.courses.root+'/'))this.scheduleReload(file);else if(file.extension==='md')this.scheduleRender();}));
@@ -271,6 +272,7 @@ class TodoPlugin extends Plugin{
    const preview=()=>D.applyTheme(root,current());
    color.addEventListener('change',preview);style.addEventListener('change',preview);
    V.el(root,'p','td-muted','可组合配色与样式，预览会显示在此窗口。设置随笔记库保存。');
+   V.el(root,'p','td-muted','已启用 Style Settings 时，可在其「Todo 工作台」分组调整主色、圆角和风景卡片透明度。');
    const sample=V.panel(root,'卡片预览');
    V.el(sample,'p','td-muted','首页、待办、复盘与课程共用此主题。');
    const error=V.el(root,'p','td-error');error.setAttribute('role','alert');
