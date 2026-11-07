@@ -36,6 +36,32 @@ test('completion trend uses actual completion date and includes today and the pr
 });
 test('bright workspace presets are persisted by the existing theme normalizer',()=>{
  for(const color of ['honey','strawberry','mint','grape']){
-  assert.deepEqual(D.normalizeTheme({color,style:'soft'}),{color,style:'soft'});
+  assert.equal(D.normalizeTheme({color,style:'soft'}).color,color);
  }
+});
+test('day and night preferences are independent and legacy colors get matching night defaults',()=>{
+ assert.deepEqual(D.normalizeTheme({color:'mint',style:'soft'}),{color:'mint',nightColor:'firefly',style:'soft'});
+ assert.deepEqual(D.normalizeTheme({color:'honey',nightColor:'rose-night',style:'minimal'}),{color:'honey',nightColor:'rose-night',style:'minimal'});
+ assert.deepEqual(D.normalizeTheme({color:'moon',nightColor:'strawberry'}),{color:'classic',nightColor:'moon',style:'classic'});
+});
+test('switching mode applies the saved palette of that mode',()=>{
+ let dark=false;
+ const target={dataset:{},ownerDocument:{body:{classList:{contains:()=>dark}}}};
+ const theme={color:'strawberry',nightColor:'firefly',style:'soft'};
+ D.applyTheme(target,theme);
+ assert.deepEqual(target.dataset,{tdMode:'day',tdColor:'strawberry',tdStyle:'soft'});
+ dark=true;
+ D.applyTheme(target,theme);
+ assert.deepEqual(target.dataset,{tdMode:'night',tdColor:'firefly',tdStyle:'soft'});
+});
+test('theme illustration matches a palette or rotates within the current mode',()=>{
+ const art=[
+  {file:'d1.webp',mode:'day',palettes:['honey']},
+  {file:'d2.webp',mode:'day',palettes:['strawberry']},
+  {file:'n1.webp',mode:'night',palettes:['moon']}
+ ];
+ assert.equal(D.themeIllustration(art,'2026-11-07','day','strawberry').file,'d2.webp');
+ assert.notEqual(D.themeIllustration(art,'2026-11-07','day','classic'),D.themeIllustration(art,'2026-11-08','day','classic'));
+ assert.equal(D.themeIllustration(art,'2026-11-07','night','firefly').file,'n1.webp');
+ assert.equal(D.themeIllustration(art.slice(0,2),'2026-11-07','night','moon'),undefined);
 });

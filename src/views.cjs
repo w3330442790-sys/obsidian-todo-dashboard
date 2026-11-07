@@ -5,6 +5,9 @@ const G=require('./global-theme.cjs');
 const scenery=require('../assets/scenery/credits.json');
 const S=require('./schedule-view.cjs'),P=require('./plans-view.cjs');
 const A=require('./assistant.cjs');const R=require('./reflection.cjs');const J=require('./journal-view.cjs');const H=require('./home-summary.cjs');
+const illustrations=scenery.filter(entry=>entry.mode&&entry.src);
+const themeArtwork=(mode,color,date=C.localDate())=>D.themeIllustration(illustrations,date,mode,color);
+const scenerySource=gallery=>gallery.source||(gallery.folder?'photos':'illustrations');
 function el(parent,tag,cls,text){const e=parent.ownerDocument.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;parent.appendChild(e);return e;}
 function button(parent,text,action,cls=''){const b=el(parent,'button','td-button '+cls,text);b.type='button';b.addEventListener('click',action);return b;}
 function select(parent,options,value,change){const s=el(parent,'select','td-select');for(const [v,label]of options){const o=el(s,'option','',label);o.value=v;}s.value=value;s.addEventListener('change',()=>change(s.value));return s;}
@@ -149,13 +152,23 @@ function home(view,parent){
   const banner=el(parent,'section','td-scenery');if(!themeHome)banner.style.height=D.clamp(gallery.height,120,420,compact?120:210)+'px';
   const files=new Map(p.galleryFiles().map(f=>[f.path,f]));
   const folder=p.galleryFolder();
-  const builtIn=new Map(scenery.filter(entry=>entry.src&&(!entry.legacyFile||!files.has(folder+'/'+entry.legacyFile))).map(entry=>['builtin:'+entry.file,entry]));
-  const chosen=D.dailyImage([...files.keys(),...builtIn.keys()],today,gallery.fixedFile);
-  const file=files.get(chosen),photo=builtIn.get(chosen);
-  if(chosen){const image=el(banner,'img','td-scenery-image');image.alt='每日风景';scenerySrc=photo?.src||p.app.vault.getResourcePath(file);image.src=scenerySrc;image.addEventListener('error',()=>{image.hidden=true;banner.classList.add('is-missing');});}
+  const {tdMode,tdColor}=view.contentEl.dataset;
+  const builtIn=new Map(scenery.filter(entry=>!entry.mode&&entry.src&&(entry.photoMode||'day')===tdMode&&(!entry.legacyFile||!files.has(folder+'/'+entry.legacyFile))).map(entry=>['builtin:'+entry.file,entry]));
+  const art=!files.has(gallery.fixedFile)&&scenerySource(gallery)==='illustrations'&&themeArtwork(tdMode,tdColor,today);
+  const chosen=art?null:D.dailyImage([...files.keys(),...builtIn.keys()],today,gallery.fixedFile);
+  const file=files.get(chosen),photo=art||builtIn.get(chosen);
+  if(chosen||art){
+   const image=el(banner,'img','td-scenery-image');
+   image.alt=photo?.label||'每日风景';scenerySrc=photo?.src||p.app.vault.getResourcePath(file);image.src=scenerySrc;
+   if(art){
+    banner.classList.add('td-illustrated-scenery');banner.dataset.illustration=art.file;
+    image.style.objectPosition=art.position;
+   }
+   image.addEventListener('error',()=>{image.hidden=true;banner.classList.add('is-missing');});
+  }
   const caption=el(banner,'div','td-scenery-caption');el(caption,'span','td-scenery-date',new Intl.DateTimeFormat('zh-CN',{month:'long',day:'numeric',weekday:'long'}).format(new Date()));el(caption,'strong','',themeHome?'从容 · Todo 工作台':photo?.label||(chosen?'今天，也留一点时间看风景。':'把喜欢的风景，留在这里。'));
   const credit=photo||(file?.path.startsWith(folder+'/')&&p.galleryCredits?.get(file.path.slice(folder.length+1)));
-  if(credit)button(banner,`${credit.attribution||credit.author} · ${credit.license}`,()=>photo?p.sceneryCredit(photo):p.app.workspace.openLinkText(folder+'/SOURCE_LICENSES.md','',false),'td-scenery-credit');
+  if(credit)button(banner,art?'AI 插画':`${credit.attribution||credit.author} · ${credit.license}`,()=>photo?p.sceneryCredit(photo):p.app.workspace.openLinkText(folder+'/SOURCE_LICENSES.md','',false),'td-scenery-credit');
   button(banner,'风景设置',()=>p.dashboardPreferences(),'td-scenery-settings');
  }
  const top=el(parent,'div','td-greeting');if(!themeHome||gallery.enabled===false)heading(top,compact?null:'YOUR DAY, AT A GLANCE',themeHome?'从容 · Todo 工作台':'把今天，安排得从容一点。',compact?null:new Intl.DateTimeFormat('zh-CN',{dateStyle:'full'}).format(new Date()));
@@ -268,19 +281,15 @@ function render(view){
  host.classList.toggle('td-congrong',themeActive);
  const aside=el(root,'header','td-sidebar td-topbar');el(aside,'div','td-brand','○  从容');el(aside,'div','td-brand-sub','TODO WORKSPACE');
  const nav=el(aside,'nav','td-navigation');for(const [key,name]of [['home','首页'],['today','待办与日程'],['journal','灵感与复盘'],['courses','课程整理'],['assistant','Codex 助手']])button(nav,name,()=>view.go(key),'td-nav'+((key===view.state.page||key==='today'&&['calendar','timeline','quadrants','plans','inbox','lists','trash'].includes(view.state.page))?' is-active':''));
- if(themeActive){
-  const switcher=el(aside,'div','td-scheme-switch');
-  switcher.setAttribute('role','group');switcher.setAttribute('aria-label','全局配色');
-  const dark=host.ownerDocument.body.classList.contains('theme-dark');
-  for(const [scheme,label] of [['warm','暖陶'],['night','夜蓝']]){
-   const option=button(switcher,label,()=>p.changeScheme(scheme));
-   option.dataset.tdScheme=scheme;
-   option.setAttribute('aria-pressed',String(dark===(scheme==='night')));
-  }
+ const switcher=el(aside,'div','td-scheme-switch');
+ switcher.setAttribute('role','group');switcher.setAttribute('aria-label','白天与夜晚模式');
+ for(const [scheme,label] of [['warm','白天'],['night','夜晚']]){
+  const option=button(switcher,label,()=>p.changeScheme(scheme));
+  option.setAttribute('aria-pressed',String((host.dataset.tdMode==='night')===(scheme==='night')));
  }
  button(aside,'主题',()=>p.themePreferences(),'td-theme-button').setAttribute('aria-label','工作台主题');
  const footer=el(aside,'div','td-sidebar-footer');el(footer,'span','td-muted','数据保存在笔记库');button(footer,'刷新数据',()=>p.run(()=>p.reload()),'td-link');button(footer,'偏好设置',()=>p.preferences(),'td-link');
  const main=el(root,'main','td-main');const errors=[...p.store.errors,...(p.journal?.errors||[]),...(p.courses?.errors||[])];if(errors.length){const banner=el(main,'div','td-warning');el(banner,'span','',`${errors.length} 个数据文件需要检查，原文件已保留。`);button(banner,'查看详情',()=>p.showErrors(),'td-link');}
  if(view.state.page==='home')home(view,main);else if(view.state.page==='journal')J.renderJournal(view,main,{el,button,select,panel,heading,empty});else if(view.state.page==='courses')require('./course-view.cjs').renderCourses(view,main,{el,button,select,panel,heading,empty});else if(view.state.page==='assistant')A.renderAssistant(view,main,{el,button,select,heading,panel,empty});else{workspace(view,main);focusBar(view,main);}
 }
-module.exports={el,button,select,empty,heading,panel,render,pageNames};
+module.exports={el,button,select,empty,heading,panel,render,pageNames,themeArtwork,scenerySource};

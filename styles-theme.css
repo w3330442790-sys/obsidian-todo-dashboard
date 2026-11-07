@@ -23,6 +23,22 @@
   --td-accent-dark: #cdb9ff;
   --td-palette-pop: #cdb0fa;
 }
+:is(.td-host,.td-modal)[data-td-color="moon"] {
+  --td-accent-dark: #a5c3ff;
+  --td-palette-pop: #ffd486;
+}
+:is(.td-host,.td-modal)[data-td-color="firefly"] {
+  --td-accent-dark: #96e6cb;
+  --td-palette-pop: #9adb83;
+}
+:is(.td-host,.td-modal)[data-td-color="violet-night"] {
+  --td-accent-dark: #d4bfff;
+  --td-palette-pop: #ae91f4;
+}
+:is(.td-host,.td-modal)[data-td-color="rose-night"] {
+  --td-accent-dark: #ffc0ce;
+  --td-palette-pop: #f2a188;
+}
 
 :is(body,body.theme-light,body.theme-dark) :is(.td-host,.td-modal)[data-td-color][data-td-style]:not([data-td-color="classic"]) {
   --td-accent: var(--td-preset-accent);

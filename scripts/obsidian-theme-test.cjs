@@ -113,7 +113,7 @@ async function main(){
     page.on('pageerror', error=>console.error('Obsidian renderer:',error.message));
     page.on('console', message=>{if(message.type()==='error'&&message.text().includes('Todo 工作台'))console.error(message.text());});
     await enableFixturePlugin(page);
-    await page.getByRole('button',{name:'暖陶',exact:true}).waitFor();
+    await page.getByRole('button',{name:'白天',exact:true}).waitFor();
     await page.bringToFront();
     const shell=page.locator('.td-host');
     const size=await shell.boundingBox();
@@ -147,8 +147,8 @@ async function main(){
     await editor.waitFor({state:'detached'});
     assert.deepEqual(await nested(page),['Projects/Today.md','Projects/Brief.md']);
 
-    await page.getByRole('button',{name:'夜蓝',exact:true}).click();
-    assert.equal(await page.getByRole('button',{name:'夜蓝',exact:true}).getAttribute('aria-pressed'),'true');
+    await page.getByRole('button',{name:'夜晚',exact:true}).click();
+    assert.equal(await page.getByRole('button',{name:'夜晚',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await page.evaluate(()=>document.body.classList.contains('theme-dark')),true);
     await waitForSavedScheme('obsidian');
     await page.screenshot({path:path.join(run,'03-native-night.png')});
@@ -156,8 +156,8 @@ async function main(){
     test=null;
     test=await launch();
     await enableFixturePlugin(test.page);
-    await test.page.getByRole('button',{name:'夜蓝',exact:true}).waitFor();
-    assert.equal(await test.page.getByRole('button',{name:'夜蓝',exact:true}).getAttribute('aria-pressed'),'true');
+    await test.page.getByRole('button',{name:'夜晚',exact:true}).waitFor();
+    assert.equal(await test.page.getByRole('button',{name:'夜晚',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal((await renderedRoot(test.page))[0],'Inbox.md');
     assert.deepEqual(await nested(test.page),['Projects/Today.md','Projects/Brief.md']);
     await test.page.getByRole('button',{name:'手动排序笔记库根目录'}).click();

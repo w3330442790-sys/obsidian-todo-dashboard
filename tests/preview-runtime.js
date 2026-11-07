@@ -12,14 +12,14 @@ files.set('Todo工作台/风景图库/01-moraine-lake.jpg',{path:'Todo工作台/
 const callbacks={};function emit(ev,file){for(const cb of callbacks[ev]||[])cb(file);}
 window.testApp={vault:{adapter:{getBasePath:()=> 'C:/isolated-vault'},getName:()=> 'isolated-preview',getFiles:()=>[...files.values()],getMarkdownFiles:()=>[...files.values()].filter(f=>f.extension==="md"),getResourcePath:f=>f.resource||"",getAbstractFileByPath:p=>files.get(p)||(folders.has(p)?{path:p,children:[]}:null),createFolder:async p=>{folders.add(p);},read:async f=>files.get(f.path).raw,create:async(path,raw)=>{if(files.has(path))throw Error('exists');const f={path,raw,extension:path.split('.').pop(),basename:path.split('/').pop().replace(/\.md$/,''),stat:{ctime:Date.now(),mtime:Date.now()}};files.set(path,f);emit('create',f);return f;},createBinary:async(path,binary)=>{const f={path,binary,extension:path.split('.').pop(),basename:path.split('/').pop(),stat:{ctime:Date.now(),mtime:Date.now()}};files.set(path,f);emit('create',f);return f;},process:async(f,fn)=>{const current=files.get(f.path);current.raw=fn(current.raw);current.stat.mtime=Date.now();emit('modify',current);},on:(ev,cb)=>{(callbacks[ev]||=[]).push(cb);return cb;}},metadataCache:{getFileCache:()=>({tags:['#学习']}),on:()=>{}},workspace:{getLeavesOfType:()=>window.leaf?[window.leaf]:[],getLeaf:()=>{window.leaf={setViewState:async()=>{leaf.view=p.reg['todo-dashboard-view'](leaf);await leaf.view.onOpen();}};return leaf;},revealLeaf:async()=>{},openLinkText:async path=>{window.openedNote=path;},onLayoutReady:cb=>{window.layoutReady=cb;}}};
 window.congrongPreview=Promise.resolve();
+const appearanceHandlers={};
+testApp.workspace.on=(event,callback)=>{(appearanceHandlers[event]||=[]).push(callback);};
+testApp.changeTheme=mode=>{
+ document.body.classList.toggle('theme-dark',mode==='obsidian');
+ document.body.classList.toggle('theme-light',mode==='moonstone');
+ for(const callback of appearanceHandlers['css-change']||[])callback();
+};
 if(previewParams.has('congrong')){
- const handlers={};
- testApp.workspace.on=(event,callback)=>{(handlers[event]||=[]).push(callback);};
- testApp.changeTheme=mode=>{
-  document.body.classList.toggle('theme-dark',mode==='obsidian');
-  document.body.classList.toggle('theme-light',mode==='moonstone');
-  for(const callback of handlers['css-change']||[])callback();
- };
  testApp.changeTheme('moonstone');
  document.body.style.background='var(--background-primary)';
  if(previewParams.has('tablet'))document.body.classList.add('is-mobile');

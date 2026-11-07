@@ -15,7 +15,7 @@
   background: var(--background-modifier-hover);
 }
 
-.td-congrong .td-scheme-switch {
+.td-host .td-scheme-switch {
   display: inline-flex;
   gap: 2px;
   flex: none;
@@ -24,7 +24,7 @@
   padding: 2px;
 }
 
-.td-congrong .td-scheme-switch .td-button {
+.td-host .td-scheme-switch .td-button {
   min-height: 29px;
   padding: 3px 12px;
   border: 0;
@@ -33,7 +33,11 @@
   white-space: nowrap;
 }
 
-.td-congrong .td-scheme-switch .td-button[aria-pressed=true],
+.td-host .td-scheme-switch .td-button[aria-pressed=true] {
+  background: var(--td-accent);
+  color: var(--td-on-accent, white);
+}
+
 .td-theme-week-day[aria-pressed=true] {
   background: var(--interactive-accent);
   color: var(--text-on-accent);
@@ -256,7 +260,7 @@
   .td-theme-home .td-scenery { min-height: 91px; height: 91px; }
   .td-theme-home .td-scenery-caption { bottom: 18px; left: 12px; }
   .td-theme-home .td-scenery-image { width: 72%; }
-  .td-congrong .td-scheme-switch { margin-left: auto; }
+  .td-host .td-scheme-switch { margin-left: auto; }
 }
 
 .is-mobile .td-theme-home .td-panel-heading .td-button,

@@ -10,14 +10,24 @@ const COMPACT_HEIGHTS={plans:280,week:280,stats:62,today:208,inspiration:208,foc
 const minHeight=id=>id==='stats'?50:id==='assistant'?56:180;
 const copy=value=>JSON.parse(JSON.stringify(value));
 const THEME_COLORS={classic:'从容青',ocean:'海屿蓝',forest:'松林绿',lavender:'暮山紫',terracotta:'暖陶橙',honey:'蜂蜜晴空',strawberry:'草莓牛奶',mint:'薄荷汽水',grape:'葡萄软糖'};
+const NIGHT_COLORS={moon:'月光蓝',firefly:'萤火青','violet-night':'星梦紫','rose-night':'灯下玫瑰'};
+const NIGHT_DEFAULTS={forest:'firefly',mint:'firefly',lavender:'violet-night',grape:'violet-night',terracotta:'rose-night',strawberry:'rose-night'};
 const THEME_STYLES={classic:'经典圆角',minimal:'极简直角',soft:'柔和卡片'};
 function normalizeTheme(input){
- const {color,style}=object(input);
- return {color:Object.hasOwn(THEME_COLORS,color)?color:'classic',style:Object.hasOwn(THEME_STYLES,style)?style:'classic'};
+ const raw=object(input);
+ const color=Object.hasOwn(THEME_COLORS,raw.color)?raw.color:'classic';
+ const nightColor=Object.hasOwn(NIGHT_COLORS,raw.nightColor)?raw.nightColor:NIGHT_DEFAULTS[color]||'moon';
+ const style=Object.hasOwn(THEME_STYLES,raw.style)?raw.style:'classic';
+ return {color,nightColor,style};
+}
+function themeMode(element){
+ return element.ownerDocument?.body?.classList.contains('theme-dark')?'night':'day';
 }
 function applyTheme(element,input){
- const {color,style}=normalizeTheme(input);
- element.dataset.tdColor=color;
+ const {color,nightColor,style}=normalizeTheme(input);
+ const mode=themeMode(element);
+ element.dataset.tdMode=mode;
+ element.dataset.tdColor=mode==='night'?nightColor:color;
  element.dataset.tdStyle=style;
 }
 function showPlanning(settings){return settings.planningWidgets!==false;}
@@ -40,6 +50,13 @@ function restoreCompactSettings(input){const previous=object(input.compactHome).
 function moveWidget(input,id,before){const x=normalizeLayout(input);if(!WIDGETS.includes(id)||id===before||before!=null&&!WIDGETS.includes(before))return x;x.order=x.order.filter(k=>k!==id);if(before==null)x.order.push(id);else x.order.splice(x.order.indexOf(before),0,id);return x;}
 function moveWidgetAfter(input,id,after){const x=normalizeLayout(input);if(id===after||!WIDGETS.includes(after))return x;const rest=x.order.filter(k=>k!==id),next=rest[rest.indexOf(after)+1];return moveWidget(x,id,next||null);}
 function dailyImage(paths,date,fixed){const sorted=[...new Set(paths)].sort();if(fixed&&sorted.includes(fixed))return fixed;if(!sorted.length)return null;const parts=String(date).split('-').map(Number),day=Math.floor(Date.UTC(parts[0],parts[1]-1,parts[2])/86400000);return sorted[(Math.abs(day)||0)%sorted.length];}
+function themeIllustration(images,date,mode,color){
+ const matchingMode=images.filter(image=>image.mode===mode);
+ const matchingColor=matchingMode.filter(image=>image.palettes.includes(color));
+ const choices=matchingColor.length?matchingColor:matchingMode;
+ const file=dailyImage(choices.map(image=>image.file),date);
+ return choices.find(image=>image.file===file);
+}
 function dropTarget(items,x,y){if(!items.length)return null;const last=items[items.length-1];if(y>Math.max(...items.map(i=>i.bottom))+5)return{id:last.id,after:true,edge:'bottom'};let hit=items.reduce((best,i)=>{const dx=Math.max(i.left-x,0,x-i.right),dy=Math.max(i.top-y,0,y-i.bottom),distance=dx*dx+dy*dy;return !best||distance<best.distance?{...i,distance}:best;},null);if(y<hit.top+Math.min(22,(hit.bottom-hit.top)*.2))return{id:hit.id,after:false,edge:'top'};if(y>hit.bottom-Math.min(22,(hit.bottom-hit.top)*.2))return{id:hit.id,after:true,edge:'bottom'};return{id:hit.id,after:x>(hit.left+hit.right)/2,edge:x>(hit.left+hit.right)/2?'right':'left'};}
 function resizeSize(initial,dx,dy,gridWidth,gap,narrow,min=180){const unit=(gridWidth+gap)/12;return{span:narrow?initial.span:Math.round(clamp(initial.span+dx/unit,1,12,initial.span)),height:Math.round(clamp(initial.height+dy,min,900,initial.height))};}
 function placeWidgets(view,parent,blocks,ui){
@@ -67,4 +84,4 @@ function placeWidgets(view,parent,blocks,ui){
  }
  return grid;
 }
-module.exports={WIDGETS,NAMES,normalizeLayout,moveWidget,moveWidgetAfter,dailyImage,clamp,placeWidgets,dropTarget,resizeSize,compactLayout,applyCompactSettings,migrateCompactSettings,restoreCompactSettings,THEME_COLORS,THEME_STYLES,normalizeTheme,applyTheme,showPlanning,completionTrend};
+module.exports={WIDGETS,NAMES,normalizeLayout,moveWidget,moveWidgetAfter,dailyImage,themeIllustration,clamp,placeWidgets,dropTarget,resizeSize,compactLayout,applyCompactSettings,migrateCompactSettings,restoreCompactSettings,THEME_COLORS,NIGHT_COLORS,THEME_STYLES,normalizeTheme,themeMode,applyTheme,showPlanning,completionTrend};

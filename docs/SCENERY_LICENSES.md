@@ -1,5 +1,12 @@
 # 真实风景图库：来源与授权
 
+0.4.2 新增以下四张真实照片。内置文件仅缩放并转换为 WebP，原作者和许可证随图库保留。
+
+- 薰衣草田 · 瓦朗索勒，Einaz80，CC BY-SA 4.0。[原图与许可](https://commons.wikimedia.org/wiki/File:Lavender_field_in_Valensole.jpg)
+- 樱花与富士山，SRP1998，CC BY-SA 4.0。[原图与许可](https://commons.wikimedia.org/wiki/File:Mount_Fuji_April_Cherry_Blossom.jpg)
+- 倒影湖银河，Alison Taggart-Barone / LassenNPS，CC BY 2.0。[原图与许可](https://commons.wikimedia.org/wiki/File:Milky_Way_over_Reflection_Lake_%2822014695510%29.jpg)
+- 特罗姆瑟极光，Gunnar Hildonen / GuideGunnar，CC BY-SA 2.0。[原图与许可](https://commons.wikimedia.org/wiki/File:Northern_lights_in_Tromsoe.jpg)
+
 0.3.5 内置 WebP 图库共 24 张。每张照片的原图、署名和许可见[内置图库授权清单](../assets/scenery/credits.json)，也可点击首页横幅的署名查看。内置版本经缩放及 WebP 编码，显示时可能按横幅比例裁切。以下保留 0.2.0 独立图库的署名记录。
 
 本图库为真实摄影作品，来自 Wikimedia Commons；不是 AI 生成。图片仅作缩放和 JPEG 编码，未裁剪。工作台横幅显示时可能通过 CSS 临时裁剪。

@@ -49,7 +49,8 @@
     "file": "04-coast-blue-hour.webp",
     "legacyFile": "04-coast-blue-hour.jpg",
     "width": 1200,
-    "height": 800
+    "height": 800,
+    "photoMode": "night"
   },
   {
     "label": "海上落日 · 葡萄牙",
@@ -62,7 +63,8 @@
     "file": "05-coast-sunset.webp",
     "legacyFile": "05-coast-sunset.jpg",
     "width": 1200,
-    "height": 852
+    "height": 852,
+    "photoMode": "night"
   },
   {
     "label": "雪山全景 · 勃朗峰",
@@ -295,5 +297,108 @@
     "width": 960,
     "height": 566,
     "label": "云雾山脊 · 乌克兰"
+  },
+  {
+    "label": "蜂蜜晴窗",
+    "file": "art-honey-window.webp",
+    "mode": "day",
+    "palettes": [
+      "honey",
+      "ocean",
+      "mint"
+    ],
+    "position": "center 62%",
+    "width": 1280,
+    "height": 853
+  },
+  {
+    "label": "草莓野餐",
+    "file": "art-strawberry-picnic.webp",
+    "mode": "day",
+    "palettes": [
+      "strawberry",
+      "terracotta",
+      "grape",
+      "lavender"
+    ],
+    "position": "center 49%",
+    "width": 1280,
+    "height": 853
+  },
+  {
+    "label": "月光书店",
+    "file": "art-moon-bookshop.webp",
+    "mode": "night",
+    "palettes": [
+      "moon",
+      "violet-night"
+    ],
+    "position": "center 62%",
+    "width": 1280,
+    "height": 853
+  },
+  {
+    "label": "萤火灯庭",
+    "file": "art-lantern-garden.webp",
+    "mode": "night",
+    "palettes": [
+      "firefly",
+      "rose-night"
+    ],
+    "position": "center 51%",
+    "width": 1280,
+    "height": 853
+  },
+  {
+    "label": "薰衣草田 · 瓦朗索勒",
+    "title": "Lavender field in Valensole.jpg",
+    "author": "Einaz80",
+    "attribution": "Einaz80",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Lavender_field_in_Valensole.jpg",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "file": "photo-valensole.webp",
+    "photoMode": "day",
+    "width": 1200,
+    "height": 900
+  },
+  {
+    "label": "樱花与富士山",
+    "title": "Mount Fuji April Cherry Blossom.jpg",
+    "author": "SRP1998",
+    "attribution": "SRP1998",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Mount_Fuji_April_Cherry_Blossom.jpg",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "file": "photo-fuji.webp",
+    "photoMode": "day",
+    "width": 1280,
+    "height": 900
+  },
+  {
+    "label": "倒影湖银河",
+    "title": "Milky Way over Reflection Lake (22014695510).jpg",
+    "author": "Alison Taggart-Barone / LassenNPS",
+    "attribution": "Alison Taggart-Barone / LassenNPS",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Milky_Way_over_Reflection_Lake_(22014695510).jpg",
+    "license": "CC BY 2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "file": "photo-reflection-lake.webp",
+    "photoMode": "night",
+    "width": 1280,
+    "height": 814
+  },
+  {
+    "label": "特罗姆瑟极光",
+    "title": "Northern lights in Tromsoe.jpg",
+    "author": "Gunnar Hildonen / GuideGunnar",
+    "attribution": "Gunnar Hildonen / GuideGunnar",
+    "source_url": "https://commons.wikimedia.org/wiki/File:Northern_lights_in_Tromsoe.jpg",
+    "license": "CC BY-SA 2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "file": "photo-tromso.webp",
+    "photoMode": "night",
+    "width": 1200,
+    "height": 900
   }
 ]

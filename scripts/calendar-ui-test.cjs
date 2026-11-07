@@ -42,29 +42,38 @@ const passed=[],errors=[];async function check(name,fn){try{await fn();passed.pu
   assert.equal(await page.locator('.td-modal input[type=date]').first().inputValue(),await page.evaluate(()=>p.lastDay));
   await page.getByRole('button',{name:'取消',exact:true}).click();
  });
- await check('bundled gallery loads and rotates through 24 distinct photos without a network request',async()=>{
+ await check('bundled photo galleries rotate independently without a network request',async()=>{
+  const credits=require('../assets/scenery/credits.json');
+  await page.evaluate(async()=>{p.galleryFiles=()=>[];await p.updateSettings({gallery:{...p.store.settings.gallery,source:'photos'}});leaf.view.go('home');});
   await page.context().setOffline(true);
-  await page.evaluate(()=>{p.galleryFiles=()=>[];leaf.view.go('home');});
-  const image=page.locator('.td-scenery-image'),seen=new Set();
-  for(let day=1;day<=25;day++){
-   await page.clock.setFixedTime(new Date(2026,10,day,12));
-   await page.evaluate(()=>p.tick());
-   await image.evaluate(img=>img.decode());
-   const src=await image.getAttribute('src');
-   assert.match(src,/^data:image\/webp;base64,/);
-   if(day<=24)assert.equal(seen.has(src),false);
-   else assert.equal(src,[...seen][0]);
-   seen.add(src);
+  const image=page.locator('.td-scenery-image');
+  for(const [mode,label] of [['day','白天'],['night','夜晚']]){
+   await page.getByRole('button',{name:label,exact:true}).click();
+   const photos=credits.filter(entry=>!entry.mode&&(entry.photoMode||'day')===mode);
+   const seen=new Set();
+   for(let day=1;day<=photos.length+1;day++){
+    await page.clock.setFixedTime(new Date(2026,10,day,12));
+    await page.evaluate(()=>p.tick());
+    await image.evaluate(img=>img.decode());
+    const src=await image.getAttribute('src');
+    const alt=await image.getAttribute('alt');
+    assert.match(src,/^data:image\/webp;base64,/);
+    assert.ok(photos.some(entry=>entry.label===alt));
+    if(day<=photos.length)assert.equal(seen.has(src),false);
+    else assert.equal(src,[...seen][0]);
+    seen.add(src);
+   }
   }
   await page.locator('.td-scenery-credit').click();
   assert.match(await page.getByRole('link',{name:'原图与作者'}).getAttribute('href'),/^https:\/\/commons\.wikimedia\.org\//);
   await page.getByRole('button',{name:'关闭',exact:true}).click();
+  await page.getByRole('button',{name:'白天',exact:true}).click();
   await page.context().setOffline(false);
  });
  await check('workspace theme is reachable on mobile, previews, persists and applies across pages',async()=>{
   await page.setViewportSize({width:360,height:900});
   await page.getByRole('button',{name:'工作台主题',exact:true}).click();
-  await page.getByLabel('主题配色').selectOption('ocean');
+  await page.getByLabel('白天配色').selectOption('ocean');
   await page.getByLabel('界面样式').selectOption('minimal');
   assert.equal(await page.locator('.td-modal .td-panel').evaluate(e=>getComputedStyle(e).borderRadius),'3px');
   assert.equal(await page.locator('.td-host').getAttribute('data-td-color'),'classic');
@@ -74,8 +83,8 @@ const passed=[],errors=[];async function check(name,fn){try{await fn();passed.pu
   const card=page.locator('.td-q-today');
   assert.equal(await card.evaluate(e=>getComputedStyle(e).borderRadius),'3px');
   assert.equal(await card.evaluate(e=>getComputedStyle(e).getPropertyValue('--td-accent').trim()),'#1f63a8');
-  await page.evaluate(()=>document.body.classList.add('theme-dark'));
-  assert.equal(await card.evaluate(e=>getComputedStyle(e).getPropertyValue('--td-accent').trim()),'#8bc4ff');
+  await page.getByRole('button',{name:'夜晚',exact:true}).click();
+  assert.equal(await card.evaluate(e=>getComputedStyle(e).getPropertyValue('--td-accent').trim()),'#a5c3ff');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.screenshot({path:path.join(output,'theme-ocean-mobile.png'),fullPage:true});
   await page.evaluate(()=>leaf.view.go('home'));

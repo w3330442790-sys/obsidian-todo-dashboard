@@ -246,9 +246,7 @@ class TodoPlugin extends Plugin{
  updateAppearance(){
   for(const view of this.views){
    const host=view.contentEl,doc=host.ownerDocument;
-   if(host.classList.contains('td-congrong')!==G.themeIsActive(doc)){view.render();continue;}
-   const mode=doc.body.classList.contains('theme-dark')?'night':'warm';
-   for(const button of host.querySelectorAll('[data-td-scheme]'))button.setAttribute('aria-pressed',String(button.dataset.tdScheme===mode));
+   if(host.dataset.tdMode!==D.themeMode(host)||host.classList.contains('td-congrong')!==G.themeIsActive(doc))view.render();
   }
  }
  galleryFolder(){return this.store.settings.gallery?.folder||this.store.root+'/风景图库';}
@@ -256,22 +254,40 @@ class TodoPlugin extends Plugin{
  async loadGalleryCredits(){this.galleryCredits=new Map();const f=this.app.vault.getAbstractFileByPath(this.galleryFolder()+'/SOURCE_LICENSES.json');if(!f)return;try{const list=JSON.parse(await this.app.vault.read(f));if(Array.isArray(list))for(const entry of list)if(entry&&typeof entry.file==='string')this.galleryCredits.set(entry.file,entry);}catch{}}
  sceneryCredit(photo){new SimpleModal(this,'风景照片来源与许可',(root,m)=>{
   V.el(root,'h3','',photo.label||photo.title);
-  V.el(root,'p','',`${photo.attribution||photo.author} · ${photo.license}`);
-  const links=V.el(root,'p','td-credit-links');
-  for(const [label,url] of [['原图与作者',photo.source_url],['查看许可证',photo.license_url]]){
-   const link=V.el(links,'a','',label);link.href=url;link.target='_blank';link.rel='noopener noreferrer';
+  if(photo.mode)V.el(root,'p','td-muted','由 OpenAI ImageGen 为工作台生成的主题插画。');
+  else{
+   V.el(root,'p','',`${photo.attribution||photo.author} · ${photo.license}`);
+   const links=V.el(root,'p','td-credit-links');
+   for(const [label,url] of [['原图与作者',photo.source_url],['查看许可证',photo.license_url]]){
+    const link=V.el(links,'a','',label);link.href=url;link.target='_blank';link.rel='noopener noreferrer';
+   }
+   V.el(root,'p','td-muted','照片已缩放并转换为 WebP，横幅显示时按版面裁切。');
   }
-  V.el(root,'p','td-muted','照片已缩放并转换为 WebP，横幅显示时按版面裁切。');
   V.button(root,'关闭',()=>m.close());
  }).open();}
  themePreferences(){const token=this.store.token('settings','settings'),theme=D.normalizeTheme(this.store.settings.theme);
   new SimpleModal(this,'工作台主题',(root,m)=>{
-   const color=formSelect(root,'主题配色',Object.entries(D.THEME_COLORS),theme.color);
+   const modes=V.el(root,'div','td-theme-modes');
+   const day=V.el(modes,'section','td-theme-mode-card');
+   const color=formSelect(day,'白天配色',Object.entries(D.THEME_COLORS),theme.color);
+   const night=V.el(modes,'section','td-theme-mode-card');
+   const nightColor=formSelect(night,'夜晚配色',Object.entries(D.NIGHT_COLORS),theme.nightColor);
+   const artPreviews=[['day',day,color],['night',night,nightColor]].map(([mode,card,input])=>{
+    const image=V.el(card,'img','td-theme-art-preview');
+    const label=V.el(card,'small','td-muted');
+    image.alt='';
+    return ()=>{
+     const art=V.themeArtwork(mode,input.value);
+     image.hidden=label.hidden=!art;
+     if(art){image.src=art.src;image.style.objectPosition=art.position||'center';label.textContent=art.label;}
+    };
+   });
    const style=formSelect(root,'界面样式',Object.entries(D.THEME_STYLES),theme.style);
-   const current=()=>D.normalizeTheme({color:color.value,style:style.value});
-   const preview=()=>D.applyTheme(root,current());
-   color.addEventListener('change',preview);style.addEventListener('change',preview);
-   V.el(root,'p','td-muted','可组合配色与样式，预览会显示在此窗口。设置随笔记库保存。');
+   const current=()=>D.normalizeTheme({color:color.value,nightColor:nightColor.value,style:style.value});
+   const preview=()=>{D.applyTheme(root,current());for(const update of artPreviews)update();};
+   for(const input of [color,nightColor,style])input.addEventListener('change',preview);
+   preview();
+   V.el(root,'p','td-muted','白天和夜晚各自记住配色，跟随 Obsidian 外观模式切换。');
    V.el(root,'p','td-muted','已启用 Style Settings 时，可在其「Todo 工作台」分组调整主色、圆角和风景卡片透明度。');
    const sample=V.panel(root,'卡片预览');
    V.el(sample,'p','td-muted','首页、待办、复盘与课程共用此主题。');
@@ -288,13 +304,14 @@ class TodoPlugin extends Plugin{
  }
  dashboardPreferences(){const token=this.store.token('settings','settings'),g=this.store.settings.gallery||{};new SimpleModal(this,'风景与布局设置',(root,m)=>{
   const enabled=formSelect(root,'首页风景栏',[['yes','显示'],['no','隐藏']],g.enabled===false?'no':'yes');
+  const source=formSelect(root,'风景来源',[['illustrations','跟随主题插画'],['photos','每日风景照片']],V.scenerySource(g));
   const folder=formField(root,'图库文件夹（库内路径）','text',this.galleryFolder());const fixed=formField(root,'固定图片（可选，留空每日轮换）','text',g.fixedFile||'');
   const height=formField(root,'风景栏高度（120–420）','number',g.height||120);height.min='120';height.max='420';
-  V.el(root,'p','td-muted','内置照片与库内照片一起离线轮换。导入的照片可随笔记库同步。');
+  V.el(root,'p','td-muted','主题插画随配色与模式变化。照片模式会离线轮换，固定图片优先于两种来源。');
   const error=V.el(root,'p','td-error');
   const pick=V.el(root,'input','td-input');pick.type='file';pick.accept='image/jpeg,image/png,image/webp';pick.multiple=true;pick.setAttribute('aria-label','导入自己的风景照片');pick.addEventListener('change',()=>this.run(()=>this.importScenery([...pick.files])));
   V.button(root,'恢复默认模块布局',()=>this.run(async()=>{await this.applyCompactLayout();m.close();}),'td-link');
-  V.button(root,'保存',async()=>{try{const value=folder.value.trim();if(!validRoot(value))throw Error('请输入普通库内文件夹路径');const file=fixed.value.trim();if(file&&(!this.app.vault.getAbstractFileByPath(file)||!this.app.vault.getAbstractFileByPath(file).extension?.match(/^(jpe?g|png|webp)$/i)))throw Error('固定图片需要有效的库内照片路径');await this.updateSettings({gallery:{enabled:enabled.value==='yes',folder:value,fixedFile:file,height:D.clamp(Number(height.value),120,420,210)}},token);m.close();}catch(e){error.textContent=e.message;}},'mod-cta');
+  V.button(root,'保存',async()=>{try{const value=folder.value.trim();if(!validRoot(value))throw Error('请输入普通库内文件夹路径');const file=fixed.value.trim();if(file&&(!this.app.vault.getAbstractFileByPath(file)||!this.app.vault.getAbstractFileByPath(file).extension?.match(/^(jpe?g|png|webp)$/i)))throw Error('固定图片需要有效的库内照片路径');await this.updateSettings({gallery:{...g,enabled:enabled.value==='yes',source:source.value,folder:value,fixedFile:file,height:D.clamp(Number(height.value),120,420,210)}},token);m.close();}catch(e){error.textContent=e.message;}},'mod-cta');
  }).open();}
  async importScenery(files){const folder=this.galleryFolder();await this.store.folders();await this.store.ensureFolder(folder);for(const file of files){if(!/\.(jpe?g|png|webp)$/i.test(file.name)||file.size>10000000)throw Error('仅支持小于 10 MB 的 JPG、PNG、WebP 照片');const name=file.name.replace(/[\\/:*?"<>|]/g,'_');const path=folder+'/'+name;if(this.app.vault.getAbstractFileByPath(path))continue;await this.app.vault.createBinary(path,await file.arrayBuffer());}this.refresh();}
  async backupMarkdown(checkActive=()=>{}){
