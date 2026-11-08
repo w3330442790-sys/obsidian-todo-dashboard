@@ -2,6 +2,7 @@
 
 const V = require('./views.cjs');
 const {parentPath, normalizeOrders, moveItem, remapOrders, patchExplorerSort} = require('./file-order.cjs');
+const {attachExplorerDrag} = require('./explorer-drag.cjs');
 
 class ExplorerOrder {
   constructor(plugin, {notice, icon}) {
@@ -71,7 +72,11 @@ class ExplorerOrder {
       this.icon(action, 'list-ordered');
       action.title = '手动排序笔记库根目录';
       action.setAttribute('aria-label', action.title);
-      this.views.set(view, {restore, action, list});
+      const detachDrag = attachExplorerDrag(list, {
+        icon: this.icon,
+        move: (path, target, after) => this.plugin.run(() => this.dragSibling(view, path, target, after))
+      });
+      this.views.set(view, {restore, action, list, detachDrag});
       view.requestSort?.();
     }
   }
@@ -104,6 +109,17 @@ class ExplorerOrder {
       const index = paths.indexOf(file.path);
       if (index < 0 || !paths[index + step]) return orders;
       const next = moveItem(paths, file.path, paths[index + step], step > 0);
+      return normalizeOrders({...orders, [parent.path]: next});
+    });
+  }
+
+  dragSibling(view, path, target, after) {
+    return this.save(orders => {
+      const parent = this.folder(parentPath(path));
+      if (!this.views.has(view) || !Array.isArray(parent?.children)) return orders;
+      const paths = this.items(view, parent).map(entry => entry.path);
+      const next = moveItem(paths, path, target, after);
+      if (next === paths || next.every((entry, index) => entry === paths[index])) return orders;
       return normalizeOrders({...orders, [parent.path]: next});
     });
   }
@@ -261,6 +277,7 @@ class ExplorerOrder {
 
   detach(view, state) {
     this.close(state);
+    state.detachDrag();
     state.action.remove();
     state.restore();
     view.requestSort?.();

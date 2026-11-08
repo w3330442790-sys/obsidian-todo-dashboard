@@ -155,14 +155,17 @@ async function main(){
     assert.equal(fs.existsSync(path.join(vault,'Inbox.md')),true);
 
     const fileRow=page.locator('.nav-file-title[data-path="Inbox.md"]');
-    const moveFromMenu=async(row, action, fileFirst)=>{
-      await row.click({button:'right'});
-      await page.getByText(action,{exact:true}).click();
+    const waitForTreeOrder=async fileFirst=>{
       await page.waitForFunction(expected=>{
         const file=document.querySelector('.nav-file-title[data-path="Inbox.md"]');
         const folder=document.querySelector('.nav-folder-title[data-path="Projects"]');
-        return !!(file.compareDocumentPosition(folder)&Node.DOCUMENT_POSITION_FOLLOWING)===expected;
+        return file&&folder&&!!(file.compareDocumentPosition(folder)&Node.DOCUMENT_POSITION_FOLLOWING)===expected;
       },fileFirst);
+    };
+    const moveFromMenu=async(row, action, fileFirst)=>{
+      await row.click({button:'right'});
+      await page.getByText(action,{exact:true}).click();
+      await waitForTreeOrder(fileFirst);
     };
     await moveFromMenu(fileRow,'下移一位',false);
     await moveFromMenu(fileRow,'上移一位',true);
@@ -180,8 +183,56 @@ async function main(){
     await editor.getByRole('button',{name:'完成',exact:true}).click();
     await editor.waitFor({state:'detached'});
     assert.deepEqual(await nested(page),['Projects/Today.md','Projects/Brief.md']);
-    await moveFromMenu(sidebar,'上移一位',false);
+
+    const dropPoint=async(row,after)=>{
+      const box=await row.boundingBox();
+      return {x:box.x+box.width/2,y:box.y+box.height*(after ? 0.75 : 0.25)};
+    };
+    const dragFromTree=async(source,target,after,valid=true)=>{
+      const grip=source.locator('.td-explorer-row-grip');
+      await grip.waitFor();
+      const start=await dropPoint(grip,false);
+      const end=await dropPoint(target,after);
+      await page.mouse.move(start.x,start.y);
+      await page.mouse.down();
+      try {
+        await page.mouse.move(end.x,end.y,{steps:12});
+        if(valid){
+          await target.and(page.locator(`[data-td-explorer-drop=${after?'after':'before'}]`)).waitFor({timeout:2500});
+        }else{
+          await page.locator('[data-td-explorer-drop]').waitFor({state:'detached',timeout:2500});
+        }
+      } finally {
+        await page.mouse.up();
+      }
+    };
+    await dragFromTree(fileRow,sidebar,true);
+    await waitForTreeOrder(false);
     assert.deepEqual((await renderedRoot(page)).slice(0,2),['Projects','Inbox.md']);
+    await dragFromTree(sidebar,fileRow,true);
+    await waitForTreeOrder(true);
+
+    const start=await dropPoint(sidebar.locator('.td-explorer-row-grip'),false);
+    const end=await dropPoint(fileRow,false);
+    const touch=await page.context().newCDPSession(page);
+    await touch.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+    await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[start]});
+    try {
+      await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[end]});
+      await fileRow.and(page.locator('[data-td-explorer-drop=before]')).waitFor({timeout:2500});
+    } finally {
+      await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      await touch.send('Emulation.setTouchEmulationEnabled',{enabled:false});
+      await touch.detach();
+    }
+    await waitForTreeOrder(false);
+    assert.deepEqual((await renderedRoot(page)).slice(0,2),['Projects','Inbox.md']);
+    await sidebar.click();
+    const nestedFile=page.locator('.nav-file-title[data-path="Projects/Brief.md"]');
+    await nestedFile.waitFor();
+    await dragFromTree(fileRow,nestedFile,true,false);
+    assert.deepEqual((await renderedRoot(page)).slice(0,2),['Projects','Inbox.md']);
+    assert.equal(fs.existsSync(path.join(vault,'Inbox.md')),true);
 
     await page.getByRole('button',{name:'夜晚',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:'夜晚',exact:true}).getAttribute('aria-pressed'),'true');
@@ -204,7 +255,7 @@ async function main(){
     await reopened.waitFor({state:'detached'});
     assert.notEqual((await renderedRoot(test.page))[1],'Inbox.md');
     assert.deepEqual(await nested(test.page),['Projects/Today.md','Projects/Brief.md']);
-    console.log('PASS native Windows Obsidian theme, mixed file/folder menu moves, focused editor, nested sorting, restart, and scoped reset');
+    console.log('PASS native Windows Obsidian theme, mouse and touch file-tree dragging, mixed sorting, restart, and scoped reset');
     console.log(run);
   }catch(error){
     await test?.page.screenshot({path:path.join(run,'failure.png')}).catch(()=>{});
