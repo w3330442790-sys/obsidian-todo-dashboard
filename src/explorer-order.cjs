@@ -21,15 +21,29 @@ class ExplorerOrder {
     plugin.registerEvent(workspace.on('layout-change', () => this.attach()));
     plugin.registerEvent(workspace.on('file-menu', (menu, file, source, leaf) => {
       if (typeof source !== 'string' || !source.startsWith('file-explorer')) return;
-      if (!this.views.size) return;
-      const path = Array.isArray(file.children) ? file.path : file.parent?.path ?? parentPath(file.path);
-      menu.addItem(item => item.setTitle('手动排序').setIcon('list-ordered').onClick(() => {
-        const views = [...this.views.keys()];
-        const origin = menu.parentEl;
-        const view = (this.views.has(leaf?.view) && leaf.view) ||
-          (origin && views.find(candidate => candidate.containerEl.contains(origin))) || views[0];
-        this.edit(view, path);
-      }));
+      const views = [...this.views.keys()];
+      const origin = menu.parentEl;
+      const view = (this.views.has(leaf?.view) && leaf.view) ||
+        (origin && views.find(candidate => candidate.containerEl.contains(origin))) || views[0];
+      if (!view) return;
+
+      const parent = file.parent;
+      if (parent) {
+        const siblings = this.items(view, parent);
+        const index = siblings.findIndex(entry => entry.path === file.path);
+        if (index >= 0) {
+          for (const [title, icon, step] of [['上移一位', 'arrow-up', -1], ['下移一位', 'arrow-down', 1]]) {
+            menu.addItem(item => item.setTitle(title).setIcon(icon).setDisabled(!siblings[index + step])
+              .onClick(() => plugin.run(() => this.moveSibling(view, file, step))));
+          }
+          menu.addItem(item => item.setTitle('调整同级顺序').setIcon('list-ordered')
+            .onClick(() => this.edit(view, file.parent?.path ?? parentPath(file.path), file.path)));
+        }
+      }
+      if (Array.isArray(file.children)) {
+        menu.addItem(item => item.setTitle('排序文件夹内容').setIcon('folder')
+          .onClick(() => this.edit(view, file.path)));
+      }
     }));
     for (const event of ['rename', 'delete']) {
       plugin.registerEvent(app.vault.on(event, (file, oldPath) => {
@@ -82,7 +96,19 @@ class ExplorerOrder {
     return job;
   }
 
-  edit(view, path) {
+  moveSibling(view, file, step) {
+    return this.save(orders => {
+      const parent = file.parent;
+      if (!this.views.has(view) || !parent) return orders;
+      const paths = this.items(view, parent).map(entry => entry.path);
+      const index = paths.indexOf(file.path);
+      if (index < 0 || !paths[index + step]) return orders;
+      const next = moveItem(paths, file.path, paths[index + step], step > 0);
+      return normalizeOrders({...orders, [parent.path]: next});
+    });
+  }
+
+  edit(view, path, selectedPath) {
     const state = this.views.get(view);
     const folder = this.folder(path);
     if (!state || !Array.isArray(folder?.children)) return;
@@ -107,7 +133,7 @@ class ExplorerOrder {
     const cancel = V.button(actions, '取消', () => this.close(state, true));
     const done = V.button(actions, '完成', () => commit(false), 'mod-cta');
     V.el(panel, 'p', 'td-explorer-folder', path === '/' ? '笔记库根目录' : path);
-    V.el(panel, 'p', 'td-muted', '拖动把手或点按箭头调整同级顺序。');
+    V.el(panel, 'p', 'td-muted', '拖动把手或点按箭头，可混排同级文件夹和文件。');
     const list = V.el(panel, 'ol', 'td-explorer-sort-list');
     const status = V.el(panel, 'p', 'td-explorer-sort-status');
     status.setAttribute('role', 'status');
@@ -125,6 +151,7 @@ class ExplorerOrder {
         const name = file.name || item.split('/').pop();
         const row = V.el(list, 'li', 'td-explorer-sort-row');
         row.dataset.path = item;
+        row.tabIndex = -1;
         const grip = V.el(row, 'span', 'td-explorer-grip');
         grip.draggable = true;
         grip.setAttribute('aria-hidden', 'true');
@@ -208,7 +235,8 @@ class ExplorerOrder {
       }
     });
     render();
-    done.focus();
+    const selected = [...list.children].find(row => row.dataset.path === selectedPath);
+    (selected || done).focus();
   }
 
   async openRoot() {

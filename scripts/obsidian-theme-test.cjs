@@ -154,12 +154,34 @@ async function main(){
     assert.equal((await renderedRoot(page))[0],'Inbox.md');
     assert.equal(fs.existsSync(path.join(vault,'Inbox.md')),true);
 
-    await page.locator('.nav-folder-title[data-path="Projects"]').click({button:'right'});
-    await page.getByText('手动排序',{exact:true}).click();
+    const fileRow=page.locator('.nav-file-title[data-path="Inbox.md"]');
+    const moveFromMenu=async(row, action, fileFirst)=>{
+      await row.click({button:'right'});
+      await page.getByText(action,{exact:true}).click();
+      await page.waitForFunction(expected=>{
+        const file=document.querySelector('.nav-file-title[data-path="Inbox.md"]');
+        const folder=document.querySelector('.nav-folder-title[data-path="Projects"]');
+        return !!(file.compareDocumentPosition(folder)&Node.DOCUMENT_POSITION_FOLLOWING)===expected;
+      },fileFirst);
+    };
+    await moveFromMenu(fileRow,'下移一位',false);
+    await moveFromMenu(fileRow,'上移一位',true);
+    await moveFromMenu(sidebar,'上移一位',false);
+    await moveFromMenu(sidebar,'下移一位',true);
+    await sidebar.click({button:'right'});
+    await page.getByText('调整同级顺序',{exact:true}).click();
+    assert.equal(await editor.getAttribute('data-folder'),'/');
+    assert.equal(await editor.locator('.td-explorer-sort-row:focus-within').getAttribute('data-path'),'Projects');
+    await editor.getByRole('button',{name:'取消',exact:true}).click();
+
+    await sidebar.click({button:'right'});
+    await page.getByText('排序文件夹内容',{exact:true}).click();
     await editor.getByRole('button',{name:'上移 Today.md',exact:true}).click();
     await editor.getByRole('button',{name:'完成',exact:true}).click();
     await editor.waitFor({state:'detached'});
     assert.deepEqual(await nested(page),['Projects/Today.md','Projects/Brief.md']);
+    await moveFromMenu(sidebar,'上移一位',false);
+    assert.deepEqual((await renderedRoot(page)).slice(0,2),['Projects','Inbox.md']);
 
     await page.getByRole('button',{name:'夜晚',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:'夜晚',exact:true}).getAttribute('aria-pressed'),'true');
@@ -174,15 +196,15 @@ async function main(){
     await test.page.getByRole('button',{name:'夜晚',exact:true}).waitFor();
     assert.equal(await test.page.getByRole('button',{name:'夜晚',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await test.page.evaluate(()=>getComputedStyle(document.body).getPropertyValue('--interactive-accent').trim()),'#d4bfff');
-    assert.equal((await renderedRoot(test.page))[0],'Inbox.md');
+    assert.deepEqual((await renderedRoot(test.page)).slice(0,2),['Projects','Inbox.md']);
     assert.deepEqual(await nested(test.page),['Projects/Today.md','Projects/Brief.md']);
     await test.page.getByRole('button',{name:'手动排序笔记库根目录'}).click();
     const reopened=test.page.locator('.td-explorer-sort');
     await reopened.getByRole('button',{name:'恢复默认排序',exact:true}).click();
     await reopened.waitFor({state:'detached'});
-    assert.notEqual((await renderedRoot(test.page))[0],'Inbox.md');
+    assert.notEqual((await renderedRoot(test.page))[1],'Inbox.md');
     assert.deepEqual(await nested(test.page),['Projects/Today.md','Projects/Brief.md']);
-    console.log('PASS native Windows Obsidian theme, root and nested sorting, reordering, restart, and scoped reset');
+    console.log('PASS native Windows Obsidian theme, mixed file/folder menu moves, focused editor, nested sorting, restart, and scoped reset');
     console.log(run);
   }catch(error){
     await test?.page.screenshot({path:path.join(run,'failure.png')}).catch(()=>{});
