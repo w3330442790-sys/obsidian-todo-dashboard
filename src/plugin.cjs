@@ -5,6 +5,7 @@ const D=require('./dashboard.cjs');const A=require('./assistant.cjs');const R=re
 const VIEW='todo-dashboard-view';
 const G=require('./global-theme.cjs');
 const {ExplorerOrder}=require('./explorer-order.cjs');
+const Literature=require('./literature-view.cjs');
 const DEFAULTS={lists:[{id:'study',name:'学习',color:'#149e9a'},{id:'work',name:'工作',color:'#6488d8'},{id:'life',name:'生活',color:'#d58c48'}],stats:[],recentSort:'modified',excludedFolders:[]};
 function clone(o){return JSON.parse(JSON.stringify(o));}
 function taskDraft(seed){
@@ -12,6 +13,7 @@ function taskDraft(seed){
 }
 function formField(parent,label,type,value){const wrap=V.el(parent,'label','td-field');V.el(wrap,'span','',label);const input=V.el(wrap,type==='textarea'?'textarea':'input','td-input');if(type!=='textarea')input.type=type;input.value=value??'';return input;}
 function formSelect(parent,label,options,value){const wrap=V.el(parent,'label','td-field');V.el(wrap,'span','',label);const input=V.select(wrap,options,value,()=>{});input.setAttribute('aria-label',label);return input;}
+const literatureUI={...V,formField,formSelect};
 function validRoot(root){return !!root&&root===root.trim()&&!root.startsWith('.')&&!root.startsWith('/')&&!root.includes('\\')&&!root.split('/').some(s=>!s||s==='.'||s==='..'||/[<>:"|?*]/.test(s));}
 class TaskModal extends Modal{
  constructor(p,task,seed={}){super(p.app);this.p=p;this.original=task;this.token=task?p.store.token('task',task.id):undefined;this.task=task?clone({...task,subtasks:task.subtasks||[]}):taskDraft(seed);}
@@ -92,11 +94,19 @@ class TodoPlugin extends Plugin{
   this.addCommand({id:'open-dashboard',name:'打开首页仪表盘',callback:()=>this.open()});
   this.addCommand({id:'open-calendar',name:'打开日程概览',callback:()=>this.open('calendar')});
   this.addCommand({id:'open-courses',name:'打开课程录音与习题整理',callback:()=>this.open('courses')});
+  this.addCommand({id:'open-literature',name:'打开文献专区',callback:()=>this.open('literature')});
   this.addCommand({id:'open-journal',name:'打开灵感与复盘',callback:()=>this.open('journal')});
   this.addCommand({id:'open-codex',name:'打开 Codex 笔记助手',callback:()=>this.open('assistant')});
   this.addCommand({id:'new-task',name:'新建任务',callback:()=>this.editTask(null,{date:C.localDate()})});
   this.addCommand({id:'quick-task',name:'快速记任务',callback:()=>this.quickTask()});
-  this.explorerOrder=new ExplorerOrder(this,{icon:setIcon});
+  this.explorerOrder=new ExplorerOrder(this,{icon:setIcon,storage:localStorage,
+   onConflicts:conflicts=>{
+    if(conflicts.length>(this.sortConflictCount||0))new Notice('文件树顺序有同步冲突，请在 Todo 工作台选择要保留的版本。');
+    this.sortConflictCount=conflicts.length;
+    this.refresh();
+   },
+   onErrors:errors=>{this.orderErrors=errors;this.refresh();}
+  });
   this.explorerOrder.start();
   this.themeDocuments=new Set([document]);
   if(typeof this.app.workspace.on==='function'){
@@ -130,6 +140,7 @@ class TodoPlugin extends Plugin{
    const settingsPath=this.store.root+'/设置.md';
    if(!this.store.paths.has('settings:settings')&&!this.app.vault.getAbstractFileByPath(settingsPath)&&!await this.app.vault.adapter?.exists?.(settingsPath))await this.store.saveSettings(clone(DEFAULTS));
    if(!this.store.errors.some(e=>e.path===settingsPath)){const compact=D.migrateCompactSettings(this.store.settings);if(compact!==this.store.settings)await this.store.saveSettings(compact,this.store.token('settings','settings'));}
+   await this.run(()=>this.explorerOrder.initialize());
    await this.repairRepeats();await this.loadGalleryCredits();this.ready=true;this.applyAppPalette();this.refresh();
   })().catch(error=>{this.initError=error.message;this.refresh();throw error;}).finally(()=>{this.initializing=null;});
   return this.initializing;
@@ -353,7 +364,37 @@ class TodoPlugin extends Plugin{
   V.button(root,'添加统计',async()=>{try{const v=value.value.trim().replace(/^\/+|\/+$/g,'');if(!v)throw Error('请输入文件夹或标签');await this.updateSettings({stats:[...(this.store.settings.stats||[]),{id:C.uid(),kind:kind.value,value:v}]},token);m.close();}catch(e){error.textContent=e.message;}},'mod-cta');
  }).open();}
  showNotes(title,notes){new SimpleModal(this,title,(root)=>{if(!notes.length)V.empty(root,'没有匹配的笔记');for(const f of notes)V.button(root,f.path,()=>this.app.workspace.openLinkText(f.path,'',false),'td-note');}).open();}
- showErrors(){new SimpleModal(this,'需要检查的数据文件',root=>{for(const e of [...this.store.errors,...(this.journal?.errors||[]),...(this.courses?.errors||[])]){V.el(root,'p','td-error',e.path+'：'+e.message);V.button(root,'打开文件',()=>this.app.workspace.openLinkText(e.path,'',false),'td-link');}}).open();}
+ showErrors(){new SimpleModal(this,'需要检查的数据文件',root=>{for(const e of [...this.store.errors,...(this.journal?.errors||[]),...(this.courses?.errors||[]),...(this.orderErrors||[])]){V.el(root,'p','td-error',e.path+'：'+e.message);V.button(root,'打开文件',()=>this.app.workspace.openLinkText(e.path,'',false),'td-link');}}).open();}
+ editLiterature(paper){new SimpleModal(this,paper?'编辑文献':'添加文献',(root,modal)=>Literature.editLiterature(this,root,modal,paper,literatureUI)).open();}
+ readingProgress(paper){new SimpleModal(this,'记录阅读进度',(root,modal)=>Literature.editProgress(this,root,modal,paper,literatureUI)).open();}
+ importLiterature(){new SimpleModal(this,'导入 Zotero',(root,modal)=>Literature.importLiterature(this,root,modal,literatureUI)).open();}
+ showOrderConflicts(){new SimpleModal(this,'处理文件树排序冲突',(root,modal)=>{
+  const conflicts=this.explorerOrder.conflicts;
+  if(!conflicts.length){V.empty(root,'当前没有文件树排序冲突。');return;}
+  const label=path=>path==='/'?'笔记库根目录':path;
+  const picker=formSelect(root,'冲突目录',conflicts.map(c=>[c.folder,label(c.folder)]),conflicts[0].folder);
+  const options=V.el(root,'div','td-form');
+  const error=V.el(root,'p','td-error');error.setAttribute('role','alert');
+  const render=()=>{
+   options.replaceChildren();error.textContent='';
+   const conflict=conflicts.find(c=>c.folder===picker.value);
+   if(!conflict)return;
+   let remote=0;
+   for(const option of conflict.options){
+    const card=V.panel(options,option.local?'本机顺序':`其他设备顺序 ${++remote}`);
+    const details=V.el(card,'details','td-review-sources');
+    V.el(details,'summary','',`查看完整顺序（${option.paths.length} 项）`);
+    const list=V.el(details,'ol');
+    for(const path of option.paths)V.el(list,'li','',path.split('/').pop());
+    V.button(card,'保留此顺序',async()=>{
+     const buttons=[...options.querySelectorAll('button')];for(const button of buttons)button.disabled=true;
+     try{await this.explorerOrder.resolve(conflict.folder,option.id,conflict.token);modal.close();}
+     catch(failure){error.textContent=failure.message;for(const button of buttons)button.disabled=false;}
+    },'mod-cta');
+   }
+  };
+  picker.addEventListener('change',render);render();
+ }).open();}
  preferences(){const token=this.store.token('settings','settings');new SimpleModal(this,'偏好设置',(root,m)=>{
   const auto=V.el(root,'label','td-toggle'),check=V.el(auto,'input','');check.type='checkbox';check.checked=this.local.autoOpen!==false;V.el(auto,'span','','启动时自动进入首页');
   const excludes=formField(root,'最近笔记排除文件夹（每行一个）','textarea',(this.store.settings.excludedFolders||[]).join('\n'));

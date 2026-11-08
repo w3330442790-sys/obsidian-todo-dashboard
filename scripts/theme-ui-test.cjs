@@ -73,6 +73,64 @@ async function checkIcons(page) {
   await page.getByRole('button',{name:'首页',exact:true}).click();
 }
 
+async function checkLiterature(page) {
+  await page.getByRole('button',{name:'文献专区',exact:true}).click();
+  await page.getByRole('button',{name:'添加文献',exact:true}).click();
+  await page.getByLabel('标题',{exact:true}).fill('手工记录的文献');
+  await page.getByLabel('期刊',{exact:true}).fill('Journal of Manual');
+  await page.getByRole('button',{name:'保存',exact:true}).click();
+  await page.getByRole('heading',{name:'手工记录的文献',exact:true}).waitFor();
+
+  const csv = [
+    'Item Type,Title,Author,Publication Title,Publication Year,DOI,Extra',
+    'journalArticle,Test journal article,Test Author,Journal of Testing,2024,10.1234/fixture,"影响因子: 3.9 JCR分区: Q1 中科院分区升级版: 医学2区 指标年份: 2025"'
+  ].join('\n');
+  const zoteroFile = {name:'zotero.csv',mimeType:'text/csv',buffer:Buffer.from(csv)};
+  const cacheFile = {name:'journal-tags-cache.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({
+    'Journal of Testing':{sciif:'6.2',sci:'Q3',sciUpSmall:'消化系统 3区'},
+    'Journal of Manual':{sciif:'1.9',sci:'Q4'}
+  }))};
+  await page.getByRole('button',{name:'导入 Zotero',exact:true}).click();
+  await page.getByLabel('Zotero 导出文件',{exact:true}).setInputFiles(zoteroFile);
+  await page.getByLabel('Journal Tags 缓存（可选）',{exact:true}).setInputFiles(cacheFile);
+  await page.getByRole('button',{name:'预览导入',exact:true}).click();
+  await page.getByText(/新增 1 条 · 重复 0 条/).waitFor();
+  await page.getByRole('button',{name:'确认导入',exact:true}).click();
+  const paper = page.locator('.td-lit-paper').filter({hasText:'Test journal article'});
+  await paper.getByText('IF 3.9',{exact:true}).waitFor();
+  await paper.getByText('JCR Q1',{exact:true}).waitFor();
+  await paper.getByText('中科院大类 医学2区',{exact:true}).waitFor();
+  await paper.getByText('中科院小类 消化系统 3区',{exact:true}).waitFor();
+  assert.equal(await paper.getByText('中科院小类 消化系统 3区',{exact:true}).getAttribute('title'),'EasyScholar / Zotero Journal Tags');
+  await paper.getByRole('button',{name:'记录进度',exact:true}).click();
+  await page.getByLabel('阅读状态',{exact:true}).selectOption('reading');
+  await page.getByLabel('已读至页',{exact:true}).fill('4');
+  await page.getByLabel('总页数',{exact:true}).fill('10');
+  await page.getByRole('button',{name:'保存',exact:true}).click();
+  await paper.getByText('阅读中 · 4 / 10 页 · 40%',{exact:true}).waitFor();
+  await page.evaluate(()=>p.reload());
+  assert.equal(await paper.getByRole('progressbar',{name:'阅读进度'}).getAttribute('value'),'40');
+  await page.getByLabel('JCR 分区筛选',{exact:true}).selectOption('Q1');
+  assert.equal(await page.locator('.td-lit-paper').count(),1);
+  await page.getByRole('button',{name:'导入 Zotero',exact:true}).click();
+  await page.getByLabel('Zotero 导出文件',{exact:true}).setInputFiles(zoteroFile);
+  await page.getByRole('button',{name:'预览导入',exact:true}).click();
+  await page.getByText(/新增 0 条 · 重复 1 条/).waitFor();
+  assert.equal(await page.getByRole('button',{name:'确认导入',exact:true}).isEnabled(),false);
+  await page.getByRole('button',{name:'取消',exact:true}).click();
+  assert.equal(await paper.getByRole('progressbar',{name:'阅读进度'}).getAttribute('value'),'40');
+  await page.getByLabel('JCR 分区筛选',{exact:true}).selectOption('');
+  await page.getByRole('button',{name:'导入 Zotero',exact:true}).click();
+  await page.getByLabel('Journal Tags 缓存（可选）',{exact:true}).setInputFiles(cacheFile);
+  await page.getByRole('button',{name:'预览导入',exact:true}).click();
+  await page.getByText(/缓存匹配 2 条 · 可补充指标 1 条/).waitFor();
+  await page.getByRole('button',{name:'确认导入',exact:true}).click();
+  await page.locator('.td-lit-paper').filter({hasText:'手工记录的文献'}).getByText('IF 1.9',{exact:true}).waitFor();
+  assert.equal(await page.locator('.td-host').evaluate(el=>el.scrollWidth>el.clientWidth),false);
+  await page.screenshot({path:path.join(out,`literature-${page.viewportSize().width}.png`),fullPage:true});
+  await page.getByRole('button',{name:'首页',exact:true}).click();
+}
+
 async function checkUpgrade(page) {
   for (const id of ['plans','stats','custom','trend']) {
     await page.locator(`[data-widget=${id}]`).waitFor();
@@ -190,6 +248,7 @@ async function main() {
     await checkLayout(page);
     await checkUpgrade(page);
     await checkIcons(page);
+    await checkLiterature(page);
     await page.screenshot({path:path.join(out,'day-desktop.png'),fullPage:true});
     const draft = page.getByRole('textbox', {name:'灵感内容'});
     await draft.fill('主题切换保留这条草稿');
@@ -233,6 +292,7 @@ async function main() {
     const mobile = await open(browser,{width:390,height:844},true);
     await checkUpgrade(mobile.page);
     await checkIcons(mobile.page);
+    await checkLiterature(mobile.page);
     assert.equal(await mobile.page.locator('.td-host').evaluate(e=>e.scrollWidth>e.clientWidth),false);
     assert.equal(await mobile.page.locator('.td-navigation').evaluate(e=>e.scrollWidth>e.clientWidth),false);
     const chartWidths = await mobile.page.locator('.td-trend-scroll').evaluate(e=>({
@@ -245,7 +305,7 @@ async function main() {
     assert.equal(await width('[data-widget=stats]'),await width('[data-widget=plans]'));
     await mobile.page.screenshot({path:path.join(out,'day-mobile.png'),fullPage:true});
     assert.deepEqual([...desktop.errors, ...tablet.errors, ...mobile.errors], []);
-    console.log('PASS desktop, tablet and phone layouts, plan countdown and trend, theme and CSS settings, draft retention and full task list');
+    console.log('PASS desktop, tablet and phone layouts, theme and plan regressions, Zotero import, journal tags and reading progress');
   } finally {
     await browser.close();
   }

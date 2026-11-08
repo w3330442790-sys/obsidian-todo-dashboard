@@ -18,8 +18,8 @@ function select(parent,options,value,change){const s=el(parent,'select','td-sele
 function empty(parent,text){el(parent,'div','td-empty',text);}
 function heading(parent,kicker,title,detail,icon){const h=el(parent,'div','td-section-heading');if(kicker)el(h,'div','td-eyebrow',kicker);withIcon(el(h,'h2','',title),icon);if(detail)el(h,'p','td-muted',detail);return h;}
 function panel(parent,title,action,icon){const p=el(parent,'section','td-panel');const h=el(p,'div','td-panel-heading');withIcon(el(h,'h3','',title),icon);if(action)action(h);return p;}
-const pageNames={journal:'灵感与复盘',courses:'课程整理',plans:'计划',home:'首页',today:'今日待办',calendar:'日程概览',timeline:'时间轴',quadrants:'四象限',inbox:'待办箱',lists:'分类清单',assistant:'Codex 助手',trash:'回收站'};
-const pageIcons={home:'🏡',today:'📝',calendar:'📅',quadrants:'🧩',timeline:'🕰️',plans:'🎯',inbox:'📥',lists:'🗂️',trash:'🗑️',journal:'💡',courses:'📚',assistant:'🤖'};
+const pageNames={journal:'灵感与复盘',courses:'课程整理',literature:'文献专区',plans:'计划',home:'首页',today:'今日待办',calendar:'日程概览',timeline:'时间轴',quadrants:'四象限',inbox:'待办箱',lists:'分类清单',assistant:'Codex 助手',trash:'回收站'};
+const pageIcons={home:'🏡',today:'📝',calendar:'📅',quadrants:'🧩',timeline:'🕰️',plans:'🎯',inbox:'📥',lists:'🗂️',trash:'🗑️',journal:'💡',courses:'📚',literature:'📑',assistant:'🤖'};
 function sortTasks(tasks){return [...tasks].sort((a,b)=>(a.status==='done')-(b.status==='done')||(a.date||'9999').localeCompare(b.date||'9999')||(a.startTime||'').localeCompare(b.startTime||'')||a.title.localeCompare(b.title));}
 function isOverdue(task,today){return task.status==='open'&&task.date&&(task.endDate||task.date)<today;}
 function filtered(view,tasks){const s=view.state;return sortTasks(tasks.filter(t=>!t.deleted&&(!s.list||t.listId===s.list)&&(s.showDone||t.status!=='done')&&(!s.query||t.title.toLowerCase().includes(s.query.toLowerCase()))));}
@@ -285,7 +285,7 @@ function render(view){
  const themeActive=G.themeIsActive(host.ownerDocument);
  host.classList.toggle('td-congrong',themeActive);
  const aside=el(root,'header','td-sidebar td-topbar');el(aside,'div','td-brand','○  从容');el(aside,'div','td-brand-sub','TODO WORKSPACE');
- const nav=el(aside,'nav','td-navigation');for(const [key,name]of [['home','首页'],['today','待办与日程'],['journal','灵感与复盘'],['courses','课程整理'],['assistant','Codex 助手']])button(nav,name,()=>view.go(key),'td-nav'+((key===view.state.page||key==='today'&&['calendar','timeline','quadrants','plans','inbox','lists','trash'].includes(view.state.page))?' is-active':''),pageIcons[key]);
+ const nav=el(aside,'nav','td-navigation');for(const [key,name]of [['home','首页'],['today','待办与日程'],['journal','灵感与复盘'],['literature','文献专区'],['courses','课程整理'],['assistant','Codex 助手']])button(nav,name,()=>view.go(key),'td-nav'+((key===view.state.page||key==='today'&&['calendar','timeline','quadrants','plans','inbox','lists','trash'].includes(view.state.page))?' is-active':''),pageIcons[key]);
  const switcher=el(aside,'div','td-scheme-switch');
  switcher.setAttribute('role','group');switcher.setAttribute('aria-label','白天与夜晚模式');
  for(const [scheme,label] of [['warm','白天'],['night','夜晚']]){
@@ -294,7 +294,9 @@ function render(view){
  }
  button(aside,'主题',()=>p.themePreferences(),'td-theme-button','🎨').setAttribute('aria-label','工作台主题');
  const footer=el(aside,'div','td-sidebar-footer');el(footer,'span','td-muted','数据保存在笔记库');button(footer,'刷新数据',()=>p.run(()=>p.reload()),'td-link');button(footer,'偏好设置',()=>p.preferences(),'td-link');
- const main=el(root,'main','td-main');const errors=[...p.store.errors,...(p.journal?.errors||[]),...(p.courses?.errors||[])];if(errors.length){const banner=el(main,'div','td-warning');el(banner,'span','',`${errors.length} 个数据文件需要检查，原文件已保留。`);button(banner,'查看详情',()=>p.showErrors(),'td-link');}
- if(view.state.page==='home')home(view,main);else if(view.state.page==='journal')J.renderJournal(view,main,{el,button,select,panel,heading,empty});else if(view.state.page==='courses')require('./course-view.cjs').renderCourses(view,main,{el,button,select,panel,heading,empty});else if(view.state.page==='assistant')A.renderAssistant(view,main,{el,button,select,heading,panel,empty});else{workspace(view,main);focusBar(view,main);}
+ const main=el(root,'main','td-main');const errors=[...p.store.errors,...(p.journal?.errors||[]),...(p.courses?.errors||[]),...(p.orderErrors||[])];if(errors.length){const banner=el(main,'div','td-warning');el(banner,'span','',`${errors.length} 个数据文件需要检查，原文件已保留。`);button(banner,'查看详情',()=>p.showErrors(),'td-link');}
+ const conflicts=p.explorerOrder?.conflicts?.length;
+ if(conflicts){const banner=el(main,'div','td-warning');el(banner,'span','',`${conflicts} 个目录的文件树顺序有同步冲突。`);button(banner,'处理排序冲突',()=>p.showOrderConflicts(),'td-link');}
+ if(view.state.page==='home')home(view,main);else if(view.state.page==='journal')J.renderJournal(view,main,{el,button,select,panel,heading,empty});else if(view.state.page==='literature')require('./literature-view.cjs').renderLiterature(view,main,{el,button,select,heading,empty});else if(view.state.page==='courses')require('./course-view.cjs').renderCourses(view,main,{el,button,select,panel,heading,empty});else if(view.state.page==='assistant')A.renderAssistant(view,main,{el,button,select,heading,panel,empty});else{workspace(view,main);focusBar(view,main);}
 }
 module.exports={el,button,select,empty,heading,panel,render,pageNames,themeArtwork,scenerySource};

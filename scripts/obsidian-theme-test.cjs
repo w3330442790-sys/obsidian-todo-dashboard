@@ -165,6 +165,8 @@ async function main(){
     await waitForTreeOrder(true);
     assert.deepEqual((await renderedRoot(page)).slice(0,2),['Inbox.md','Projects']);
     assert.deepEqual(await nested(page),['Projects/Today.md','Projects/Brief.md']);
+    const orderDirectory=path.join(vault,'Todo工作台','文件树排序');
+    assert.equal(fs.readdirSync(orderDirectory).filter(name=>name.endsWith('.md')).length,2);
 
     const dropPoint=async(row,after)=>{
       const box=await row.boundingBox();
@@ -225,6 +227,22 @@ async function main(){
     });
     assert.equal(await page.locator('.td-explorer-sort').count(),0);
     await page.screenshot({path:path.join(run,'02-native-sort.png')});
+
+    await page.evaluate(async () => {
+      const directory='Todo工作台/文件树排序';
+      const remote={version:1,id:'remote-choice-1',author:'remote-device',kind:'order',folder:'/',
+        paths:['Research','Projects','Inbox.md'],sequence:1,context:[],moves:[]};
+      const raw='# Todo 工作台文件树排序\n\n'+'\x60\x60\x60json\n'+JSON.stringify(remote,null,2)+'\n'+'\x60\x60\x60\n';
+      await app.vault.create(directory+'/order-remote-choice-1.md',raw);
+    });
+    const conflictButton=page.getByRole('button',{name:'处理排序冲突',exact:true});
+    await conflictButton.click();
+    const modal=page.locator('.td-modal');
+    await modal.getByText('其他设备顺序 1',{exact:true}).waitFor();
+    const localOrder=modal.locator('.td-panel').filter({hasText:'本机顺序'});
+    await localOrder.getByRole('button',{name:'保留此顺序',exact:true}).click();
+    await conflictButton.waitFor({state:'detached'});
+    assert.deepEqual((await renderedRoot(page)).slice(0,2),['Projects','Inbox.md']);
 
     await page.getByRole('button',{name:'夜晚',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:'夜晚',exact:true}).getAttribute('aria-pressed'),'true');

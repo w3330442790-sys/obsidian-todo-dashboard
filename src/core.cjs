@@ -74,6 +74,7 @@ function decodeRecord(text,kind){
   if((value.excludedFolders||[]).some(x=>typeof x!=='string'))throw Error('排除路径格式损坏');
  }
  if(kind==='plan')S.validatePlan(value);
+ if(kind==='literature')return {...value,...require('./literature.cjs').normalizeLiteratureRecord(value)};
  return value;
 }
 function matchesNote(path,tags,filter){

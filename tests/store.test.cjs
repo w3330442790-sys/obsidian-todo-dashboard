@@ -13,3 +13,19 @@ test('queued refresh cannot silently upgrade a stale writers snapshot',async()=>
 
 test('plans reload independently and reject stale edits',async()=>{const v=vault(),s=new Store(v,'Todo工作台'),other=new Store(v,'Todo工作台');const p={id:'p',title:'考试',status:'open',startDate:'2026-10-28',endDate:'2026-11-01',goals:[]};assert.equal(typeof s.savePlan,'function');await s.savePlan(p);await other.load();assert.equal(other.plans.get('p').title,'考试');await other.savePlan({...p,title:'已修改'});await assert.rejects(s.savePlan({...p,title:'过期修改'}),/已被其他设备或窗口修改/);assert.equal(s.sessions.size,0);});
 test('invalid plans and schedules cannot be saved',async()=>{const s=new Store(vault(),'Todo工作台');await assert.rejects(s.savePlan({id:'bad',title:''}));await assert.rejects(s.saveTask({...task,endDate:'2026-10-25'}));});
+
+test('literature metrics and reading progress sync as individual vault files',async()=>{
+ const v=vault(),desktop=new Store(v,'Todo工作台'),tablet=new Store(v,'Todo工作台');
+ const paper={id:'paper-a',title:'A fixture article',status:'reading',currentPage:4,totalPages:10,
+  metrics:{impactFactor:3.9,jcrQuartile:'Q1',casMajor:'医学2区',metricsYear:2025}};
+ await desktop.saveLiterature(paper);
+ assert.ok(v.data.has('Todo工作台/literature/paper-a.md'));
+ await tablet.load();
+ assert.equal(tablet.literature.get(paper.id).metrics.impactFactor,3.9);
+ assert.equal(tablet.literature.get(paper.id).currentPage,4);
+ await tablet.saveLiterature({...tablet.literature.get(paper.id),currentPage:7},tablet.token('literature',paper.id));
+ await assert.rejects(desktop.saveLiterature({...paper,currentPage:5}),/已被其他设备或窗口修改/);
+ await desktop.load();
+ assert.equal(desktop.literature.get(paper.id).currentPage,7);
+ assert.equal(desktop.tasks.size,0);
+});
