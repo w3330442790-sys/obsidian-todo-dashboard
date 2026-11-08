@@ -1,54 +1,110 @@
-/* Theme tokens stay inside the workspace and its dialogs. */
-:is(.td-host,.td-modal)[data-td-color="ocean"] { --td-preset-accent: #1f63a8; --td-accent-dark: #8bc4ff; }
-:is(.td-host,.td-modal)[data-td-color="forest"] { --td-preset-accent: #34643d; --td-accent-dark: #9ccc9f; }
-:is(.td-host,.td-modal)[data-td-color="lavender"] { --td-preset-accent: #6d4a99; --td-accent-dark: #cdb5ff; }
-:is(.td-host,.td-modal)[data-td-color="terracotta"] { --td-preset-accent: #994b30; --td-accent-dark: #ffb093; }
+/* The application and workspace preview share the same palette values. */
+:where(.td-host,.td-modal)[data-td-color] { --td-palette-pop: initial; }
+
+body:not(.theme-dark)[data-td-day-color="classic"],
+:is(.td-host,.td-modal)[data-td-color="classic"] { --td-preset-accent: #186b64; }
+body:not(.theme-dark)[data-td-day-color="ocean"],
+:is(.td-host,.td-modal)[data-td-color="ocean"] { --td-preset-accent: #1f63a8; }
+body:not(.theme-dark)[data-td-day-color="forest"],
+:is(.td-host,.td-modal)[data-td-color="forest"] { --td-preset-accent: #34643d; }
+body:not(.theme-dark)[data-td-day-color="lavender"],
+:is(.td-host,.td-modal)[data-td-color="lavender"] { --td-preset-accent: #6d4a99; }
+body:not(.theme-dark)[data-td-day-color="terracotta"],
+:is(.td-host,.td-modal)[data-td-color="terracotta"] { --td-preset-accent: #994b30; }
+body:not(.theme-dark)[data-td-day-color="honey"],
 :is(.td-host,.td-modal)[data-td-color="honey"] {
   --td-preset-accent: #235b97;
-  --td-accent-dark: #a5d2ff;
   --td-palette-pop: #ffd66b;
 }
+body:not(.theme-dark)[data-td-day-color="strawberry"],
 :is(.td-host,.td-modal)[data-td-color="strawberry"] {
   --td-preset-accent: #a13962;
-  --td-accent-dark: #ffadc9;
   --td-palette-pop: #ffa9bc;
 }
+body:not(.theme-dark)[data-td-day-color="mint"],
 :is(.td-host,.td-modal)[data-td-color="mint"] {
   --td-preset-accent: #186951;
-  --td-accent-dark: #94e6c5;
   --td-palette-pop: #87e6c1;
 }
+body:not(.theme-dark)[data-td-day-color="grape"],
 :is(.td-host,.td-modal)[data-td-color="grape"] {
   --td-preset-accent: #6544a2;
-  --td-accent-dark: #cdb9ff;
   --td-palette-pop: #cdb0fa;
 }
+body.theme-dark[data-td-night-color="moon"],
 :is(.td-host,.td-modal)[data-td-color="moon"] {
   --td-accent-dark: #a5c3ff;
   --td-palette-pop: #ffd486;
 }
+body.theme-dark[data-td-night-color="firefly"],
 :is(.td-host,.td-modal)[data-td-color="firefly"] {
   --td-accent-dark: #96e6cb;
   --td-palette-pop: #9adb83;
 }
+body.theme-dark[data-td-night-color="violet-night"],
 :is(.td-host,.td-modal)[data-td-color="violet-night"] {
   --td-accent-dark: #d4bfff;
   --td-palette-pop: #ae91f4;
 }
+body.theme-dark[data-td-night-color="rose-night"],
 :is(.td-host,.td-modal)[data-td-color="rose-night"] {
   --td-accent-dark: #ffc0ce;
   --td-palette-pop: #f2a188;
 }
 
-:is(body,body.theme-light,body.theme-dark) :is(.td-host,.td-modal)[data-td-color][data-td-style]:not([data-td-color="classic"]) {
+body[data-td-day-color][data-td-night-color] {
+  --td-app-accent: var(--td-preset-accent);
+  --td-app-ink: #ffffff;
+  --td-app-base: #fffefd;
+  --td-app-surface: var(--td-palette-pop, var(--td-app-accent));
+  --td-app-hover: color-mix(in srgb, var(--td-app-accent) 85%, #17202c);
+  --background-primary: color-mix(in srgb, var(--td-app-surface) 9%, var(--td-app-base));
+  --background-primary-alt: color-mix(in srgb, var(--td-app-surface) 4%, var(--td-app-base));
+  --background-secondary: color-mix(in srgb, var(--td-app-surface) 17%, var(--td-app-base));
+  --background-secondary-alt: color-mix(in srgb, var(--td-app-surface) 22%, var(--td-app-base));
+  --background-modifier-hover: color-mix(in srgb, var(--td-app-accent) 13%, var(--background-primary));
+  --background-modifier-border: color-mix(in srgb, var(--td-app-accent) 21%, var(--background-primary));
+  --background-modifier-border-hover: color-mix(in srgb, var(--td-app-accent) 44%, var(--background-primary));
+  --background-modifier-form-field: var(--background-primary-alt);
+  --interactive-normal: var(--background-primary-alt);
+  --interactive-hover: var(--background-modifier-hover);
+  --interactive-accent: var(--td-app-accent);
+  --interactive-accent-hover: var(--td-app-hover);
+  --color-accent: var(--td-app-accent);
+  --color-accent-1: var(--td-app-hover);
+  --color-accent-2: var(--td-app-hover);
+  --text-on-accent: var(--td-app-ink);
+  --text-accent: var(--td-app-accent);
+  --text-accent-hover: var(--td-app-hover);
+  --text-selection: color-mix(in srgb, var(--td-app-accent) 27%, transparent);
+  --ribbon-background: var(--background-secondary);
+  --titlebar-background: var(--background-secondary);
+  --titlebar-background-focused: var(--background-secondary);
+  --tab-container-background: var(--background-secondary);
+  --tab-background-active: var(--background-primary);
+  --nav-item-background-active: var(--background-modifier-hover);
+  --nav-item-color-active: var(--text-accent);
+  --modal-background: var(--background-primary-alt);
+  --link-color: var(--text-accent);
+  --link-color-hover: var(--text-accent-hover);
+}
+
+body.theme-dark[data-td-day-color][data-td-night-color] {
+  --td-app-accent: var(--td-accent-dark);
+  --td-app-ink: #17202c;
+  --td-app-base: #10141b;
+  --td-app-hover: color-mix(in srgb, var(--td-app-accent) 82%, white);
+}
+
+body :is(.td-host,.td-modal)[data-td-color][data-td-style] {
   --td-accent: var(--td-preset-accent);
-  --td-on-accent: white;
+  --td-on-accent: #ffffff;
   --td-soft: color-mix(in srgb, var(--td-accent) 10%, var(--background-primary));
   --td-shell: color-mix(in srgb, var(--td-accent) 4%, var(--background-primary));
   --td-topbar: color-mix(in srgb, var(--td-accent) 7%, var(--background-secondary));
 }
 
-body.theme-dark :is(.td-host,.td-modal)[data-td-color][data-td-style]:not([data-td-color="classic"]) {
+body.theme-dark :is(.td-host,.td-modal)[data-td-color][data-td-style] {
   --td-accent: var(--td-accent-dark);
   --td-on-accent: #17202c;
 }
@@ -57,6 +113,8 @@ body.theme-dark :is(.td-host,.td-modal)[data-td-color][data-td-style]:not([data-
 .td-host .td-topbar { background: var(--td-topbar, var(--background-secondary)); }
 :is(.td-host,.td-modal) .td-button.mod-cta,
 .td-host .td-calendar .is-today .td-day-number { color: var(--td-on-accent, white); }
+body .td-host[data-td-color] .td-nav.is-active { color: var(--td-accent); }
+.td-host .td-clock { color: var(--td-accent); }
 
 :is(.td-host,.td-modal)[data-td-style="minimal"] {
   --td-preset-radius: 3px;

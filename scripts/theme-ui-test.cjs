@@ -50,6 +50,29 @@ async function checkLayout(page) {
   assert.equal(await title.getByRole('button', {name:/逾期/}).count(), 1);
 }
 
+async function checkIcons(page) {
+  const icon = '[aria-hidden=true].td-label-icon';
+  const check = async (role, name, expected) => {
+    const label = page.getByRole(role,{name,exact:true});
+    assert.equal(await label.locator(icon).textContent({timeout:1500}),expected);
+  };
+  await check('button','首页','🏡');
+  await check('heading','专注计时','⏱️');
+  await page.getByRole('button',{name:'待办与日程',exact:true}).click();
+  await check('button','月历','📅');
+  await page.getByRole('button',{name:'计划',exact:true}).click();
+  await check('button','进行中','🚀');
+  await check('button','已完成','🏆');
+  assert.equal(await page.locator('.td-clock').evaluate(e=>getComputedStyle(e).color),'rgb(35, 91, 151)');
+  await page.getByRole('button',{name:'灵感与复盘',exact:true}).click();
+  await check('heading','灵感速记','💡');
+  await page.getByRole('button',{name:'课程整理',exact:true}).click();
+  await check('heading','分享链接导入','🔗');
+  await page.getByRole('button',{name:'Codex 助手',exact:true}).click();
+  await check('heading','Codex 笔记助手','🤖');
+  await page.getByRole('button',{name:'首页',exact:true}).click();
+}
+
 async function checkUpgrade(page) {
   for (const id of ['plans','stats','custom','trend']) {
     await page.locator(`[data-widget=${id}]`).waitFor();
@@ -77,6 +100,11 @@ async function checkUpgrade(page) {
   assert.match(await page.locator('.td-trend-total').textContent(),/共完成 1 项/);
 
   const host = page.locator('.td-host');
+  const appColors = () => page.evaluate(() => {
+    const css = getComputedStyle(document.body);
+    return ['--background-primary', '--background-secondary', '--interactive-accent'].map(name=>css.getPropertyValue(name).trim());
+  });
+  const previousColors = await appColors();
   await page.getByRole('button',{name:'工作台主题'}).click();
   await page.getByLabel('白天配色',{exact:true}).selectOption('honey');
   await page.getByLabel('夜晚配色',{exact:true}).selectOption('firefly');
@@ -84,14 +112,24 @@ async function checkUpgrade(page) {
   assert.equal(await page.getByLabel('夜晚配色',{exact:true}).locator('option[value=honey]').count(),0);
   assert.equal(await page.getByLabel('白天配色',{exact:true}).locator('option[value=firefly]').count(),0);
   await page.getByLabel('界面样式',{exact:true}).selectOption('soft');
+  assert.deepEqual(await appColors(),previousColors,'preview leaves the application palette alone');
   await page.getByRole('button',{name:'保存主题'}).click();
   assert.equal(await host.getAttribute('data-td-color'),'honey');
   assert.equal(await host.evaluate(e=>getComputedStyle(e).getPropertyValue('--td-accent').trim()),'#235b97');
+  const dayColors = await appColors();
+  assert.equal(dayColors[2],'#235b97','the palette applies outside the dashboard');
+  assert.notEqual(dayColors[0],previousColors[0]);
+  assert.notEqual(dayColors[1],previousColors[1]);
+  assert.equal(await page.locator('.td-theme-week-day[aria-pressed=true]').evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(35, 91, 151)');
+  assert.equal(await page.locator('.td-clock').evaluate(e=>getComputedStyle(e).color),'rgb(35, 91, 151)');
   const scene=page.locator('.td-scenery');
   assert.equal(await scene.getAttribute('data-illustration'),'art-honey-window.webp');
   await page.getByRole('button',{name:'夜晚',exact:true}).click();
   assert.equal(await host.getAttribute('data-td-color'),'firefly');
   assert.equal(await host.evaluate(e=>getComputedStyle(e).getPropertyValue('--td-accent').trim()),'#96e6cb');
+  const nightColors = await appColors();
+  assert.equal(nightColors[2],'#96e6cb');
+  assert.notEqual(nightColors[0],dayColors[0]);
   assert.equal(await scene.getAttribute('data-illustration'),'art-lantern-garden.webp');
   await page.getByRole('button',{name:'风景设置',exact:true}).click();
   await page.getByLabel('风景来源',{exact:true}).selectOption('photos');
@@ -151,13 +189,14 @@ async function main() {
     const {page} = desktop;
     await checkLayout(page);
     await checkUpgrade(page);
+    await checkIcons(page);
     await page.screenshot({path:path.join(out,'day-desktop.png'),fullPage:true});
     const draft = page.getByRole('textbox', {name:'灵感内容'});
     await draft.fill('主题切换保留这条草稿');
     await page.getByRole('button', {name:'夜晚', exact:true}).click();
     assert.equal(await page.getByRole('button', {name:'夜晚', exact:true}).getAttribute('aria-pressed'), 'true');
     assert.equal(await draft.inputValue(), '主题切换保留这条草稿');
-    assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--background-primary').trim()), '#101821');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--interactive-accent').trim()), '#96e6cb');
     await draft.fill('');
     await page.screenshot({path:path.join(out,'night-desktop.png'),fullPage:true});
     await page.locator('.td-layout-tools > summary').click();
@@ -193,7 +232,9 @@ async function main() {
     assert.equal(await today.locator('.td-task').count(), 4);
     const mobile = await open(browser,{width:390,height:844},true);
     await checkUpgrade(mobile.page);
+    await checkIcons(mobile.page);
     assert.equal(await mobile.page.locator('.td-host').evaluate(e=>e.scrollWidth>e.clientWidth),false);
+    assert.equal(await mobile.page.locator('.td-navigation').evaluate(e=>e.scrollWidth>e.clientWidth),false);
     const chartWidths = await mobile.page.locator('.td-trend-scroll').evaluate(e=>({
       client:e.clientWidth, scroll:e.scrollWidth,
       table:e.firstElementChild.getBoundingClientRect().width,

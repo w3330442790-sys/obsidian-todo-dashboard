@@ -99,7 +99,15 @@ class TodoPlugin extends Plugin{
   this.explorerOrder=new ExplorerOrder(this,{notice:message=>new Notice(message),icon:setIcon});
   this.explorerOrder.start();
   this.addCommand({id:'sort-files',name:'手动排序文件与文件夹',callback:()=>this.run(()=>this.explorerOrder.openRoot())});
-  if(typeof this.app.workspace.on==='function')this.registerEvent(this.app.workspace.on('css-change',()=>this.updateAppearance()));
+  this.themeDocuments=new Set([document]);
+  if(typeof this.app.workspace.on==='function'){
+   this.registerEvent(this.app.workspace.on('css-change',()=>this.updateAppearance()));
+   this.registerEvent(this.app.workspace.on('window-open',(_,win)=>{
+    this.themeDocuments.add(win.document);
+    if(this.ready)G.applyAppPalette(win.document,this.store.settings);
+   }));
+   this.registerEvent(this.app.workspace.on('window-close',(_,win)=>this.themeDocuments.delete(win.document)));
+  }
   this.app.workspace.trigger?.('parse-style-settings');
   this.addCommand({id:'toggle-focus',name:'开始 / 暂停 / 继续专注',callback:()=>this.run(()=>this.timer?this.toggleTimer():this.startTimer(null))});
   this.addSettingTab(new SettingsTab(this.app,this));
@@ -107,7 +115,13 @@ class TodoPlugin extends Plugin{
   this.registerEvent(this.app.metadataCache.on('changed',file=>{if(!file?.path?.startsWith(this.store.root+'/'))this.scheduleRender();}));
   this.registerInterval(globalThis.setInterval(()=>this.tick(),1000));
   this.registerDomEvent(document,'visibilitychange',()=>{if(document.hidden){this.hiddenAt=Date.now();this.persistTimer();}else{const gap=this.hiddenAt?Date.now()-this.hiddenAt:0;if(gap>60000&&this.timer?.runningSince!=null)this.reviewTimer(this.hiddenAt);else this.refresh();this.hiddenAt=null;}});
-  this.app.workspace.onLayoutReady(()=>this.run(async()=>{this.explorerOrder.attach();await this.initializeData();if(this.local.autoOpen!==false)await this.open();if(this.timer)this.reviewTimer(this.timer.savedAt||Date.now());}));
+  this.app.workspace.onLayoutReady(()=>this.run(async()=>{
+   this.explorerOrder.attach();
+   this.app.workspace.iterateAllLeaves?.(leaf=>this.themeDocuments.add(leaf.view.containerEl.ownerDocument));
+   await this.initializeData();
+   if(this.local.autoOpen!==false)await this.open();
+   if(this.timer)this.reviewTimer(this.timer.savedAt||Date.now());
+  }));
  }
  async initializeData(){
   if(this.initializing)return this.initializing;
@@ -117,17 +131,17 @@ class TodoPlugin extends Plugin{
    const settingsPath=this.store.root+'/设置.md';
    if(!this.store.paths.has('settings:settings')&&!this.app.vault.getAbstractFileByPath(settingsPath)&&!await this.app.vault.adapter?.exists?.(settingsPath))await this.store.saveSettings(clone(DEFAULTS));
    if(!this.store.errors.some(e=>e.path===settingsPath)){const compact=D.migrateCompactSettings(this.store.settings);if(compact!==this.store.settings)await this.store.saveSettings(compact,this.store.token('settings','settings'));}
-   await this.repairRepeats();await this.loadGalleryCredits();this.ready=true;this.refresh();
+   await this.repairRepeats();await this.loadGalleryCredits();this.ready=true;this.applyAppPalette();this.refresh();
   })().catch(error=>{this.initError=error.message;this.refresh();throw error;}).finally(()=>{this.initializing=null;});
   return this.initializing;
  }
- onunload(){this.jobAbort?.abort();this.explorerOrder?.stop();for(const view of this.views)view.layoutCleanup?.();clearTimeout(this.reloadHandle);clearTimeout(this.renderHandle);this.assistant?.close();this.persistTimer();}
+ onunload(){this.jobAbort?.abort();this.explorerOrder?.stop();for(const view of this.views)view.layoutCleanup?.();this.themeDocuments?.forEach(doc=>G.applyAppPalette(doc));this.themeDocuments?.clear();clearTimeout(this.reloadHandle);clearTimeout(this.renderHandle);this.assistant?.close();this.persistTimer();}
  async run(fn){try{return await fn();}catch(e){console.error('[Todo 工作台]',e);new Notice('操作未完成：'+e.message,8000);}}
  refresh(){if(this.interacting){this.pendingRefresh=true;return;}this.pendingRefresh=false;for(const v of this.views)v.render();}
  tick(today=C.localDate()){if(this.lastDay!==today){this.lastDay=today;this.refresh();}for(const view of this.views){const now=new Date();for(const e of view.contentEl.querySelectorAll('[data-now-line]'))e.style.top=(now.getHours()+now.getMinutes()/60)*Number(e.dataset.hourHeight||48)+'px';for(const e of view.contentEl.querySelectorAll('[data-timer]'))e.textContent=C.duration(this.timer?C.elapsed(this.timer):0);const totals=R.focusTotals([...(this.store.sessions?.values()||[])],this.timer);for(const e of view.contentEl.querySelectorAll('[data-focus-total]'))e.textContent=C.duration(totals[e.dataset.focusTotal]||0);}}
  scheduleRender(){clearTimeout(this.renderHandle);this.renderHandle=setTimeout(()=>this.refresh(),400);}
  scheduleReload(file){if(this.ready===false)return;if(file&&file.extension!=='md')this.assetDirty=true;clearTimeout(this.reloadHandle);this.reloadHandle=setTimeout(()=>this.run(()=>this.reload()),350);}
- async reload(){const fingerprint=()=>JSON.stringify([...(this.store.snapshots||[])].sort((a,b)=>a[0].localeCompare(b[0])))+JSON.stringify(this.store.errors)+JSON.stringify([...(this.journal?.snapshots||[])])+JSON.stringify(this.journal?.errors);const before=fingerprint();await this.store.load();await this.journal?.load();await this.repairRepeats();await this.loadGalleryCredits();if(before!==fingerprint()||this.assetDirty){this.assetDirty=false;this.refresh();}}
+ async reload(){const fingerprint=()=>JSON.stringify([...(this.store.snapshots||[])].sort((a,b)=>a[0].localeCompare(b[0])))+JSON.stringify(this.store.errors)+JSON.stringify([...(this.journal?.snapshots||[])])+JSON.stringify(this.journal?.errors);const before=fingerprint();await this.store.load();await this.journal?.load();await this.repairRepeats();await this.loadGalleryCredits();if(before!==fingerprint()||this.assetDirty){this.assetDirty=false;this.applyAppPalette();this.refresh();}}
  async repairRepeats(){
   for(const task of [...this.store.tasks.values()]){
    if(task.deleted||task.status!=='done'||!task.completedAt||task.repeatIssued)continue;
@@ -230,7 +244,7 @@ class TodoPlugin extends Plugin{
  coursePreferences(){new SimpleModal(this,'讯飞听见本机连接',(root,m)=>{V.el(root,'p','td-muted','使用本机 xftj-transcribe 工具和官方授权。凭据不写入笔记库；仅列出录音并读取已有稿，不发起付费转写。');const script=formField(root,'xftj.py 完整路径（留空自动查找）','text',this.xftjSettings.script||'');const python=formField(root,'Python 可执行文件或完整路径','text',this.xftjSettings.python||'python');V.button(root,'保存讯飞连接设置',()=>{if(this.views.size&&[...this.views].some(v=>v.state.course?.busy)){new Notice('请先停止课程操作');return;}this.xftjSettings={script:script.value.trim(),python:python.value.trim()||'python'};localStorage.setItem(this.localKey+':xftj',JSON.stringify(this.xftjSettings));this.courseBridge=new XftjBridge(this.xftjSettings);this.courses.bridge=this.courseBridge;m.close();this.refresh();},'mod-cta');}).open();}
  async applyCompactLayout(){const token=this.store.token('settings','settings');await this.updateSettings(D.applyCompactSettings(this.store.settings),token);}
  async restoreHomeLayout(){const token=this.store.token('settings','settings');await this.updateSettings(D.restoreCompactSettings(this.store.settings),token);}
- async updateSettings(patch,token){await this.store.saveSettings({...this.store.settings,...patch},token);if(patch.gallery)await this.loadGalleryCredits();this.refresh();}
+ async updateSettings(patch,token){await this.store.saveSettings({...this.store.settings,...patch},token);if(patch.theme)this.applyAppPalette();if(patch.gallery)await this.loadGalleryCredits();this.refresh();}
  saveLocal(patch){
   const write=(this.localWrite||Promise.resolve()).then(async()=>{
    const next={...this.local,...patch};
@@ -239,6 +253,9 @@ class TodoPlugin extends Plugin{
   });
   this.localWrite=write.catch(()=>{});
   return write;
+ }
+ applyAppPalette(){
+  this.themeDocuments?.forEach(doc=>G.applyAppPalette(doc,this.store.settings));
  }
  changeScheme(scheme){
   if(!G.selectScheme(this.app,scheme))new Notice('请在 Obsidian 设置 → 外观中切换浅色或深色。');
@@ -266,7 +283,7 @@ class TodoPlugin extends Plugin{
   V.button(root,'关闭',()=>m.close());
  }).open();}
  themePreferences(){const token=this.store.token('settings','settings'),theme=D.normalizeTheme(this.store.settings.theme);
-  new SimpleModal(this,'工作台主题',(root,m)=>{
+  new SimpleModal(this,'Obsidian 全局主题',(root,m)=>{
    const modes=V.el(root,'div','td-theme-modes');
    const day=V.el(modes,'section','td-theme-mode-card');
    const color=formSelect(day,'白天配色',Object.entries(D.THEME_COLORS),theme.color);
@@ -287,10 +304,10 @@ class TodoPlugin extends Plugin{
    const preview=()=>{D.applyTheme(root,current());for(const update of artPreviews)update();};
    for(const input of [color,nightColor,style])input.addEventListener('change',preview);
    preview();
-   V.el(root,'p','td-muted','白天和夜晚各自记住配色，跟随 Obsidian 外观模式切换。');
+   V.el(root,'p','td-muted','保存后，白天和夜晚配色会随 Obsidian 外观模式应用到整个应用，包括笔记、侧栏和工作台。');
    V.el(root,'p','td-muted','已启用 Style Settings 时，可在其「Todo 工作台」分组调整主色、圆角和风景卡片透明度。');
    const sample=V.panel(root,'卡片预览');
-   V.el(sample,'p','td-muted','首页、待办、复盘与课程共用此主题。');
+   V.el(sample,'p','td-muted','这里预览当前日夜模式的配色与工作台样式。');
    const error=V.el(root,'p','td-error');error.setAttribute('role','alert');
    const actions=V.el(root,'div','td-modal-actions');
    V.button(actions,'取消',()=>m.close());

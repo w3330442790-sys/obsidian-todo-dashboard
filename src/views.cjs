@@ -9,12 +9,17 @@ const illustrations=scenery.filter(entry=>entry.mode&&entry.src);
 const themeArtwork=(mode,color,date=C.localDate())=>D.themeIllustration(illustrations,date,mode,color);
 const scenerySource=(gallery,hasPhotos)=>gallery.source||((gallery.folder||hasPhotos)?'photos':'illustrations');
 function el(parent,tag,cls,text){const e=parent.ownerDocument.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;parent.appendChild(e);return e;}
-function button(parent,text,action,cls=''){const b=el(parent,'button','td-button '+cls,text);b.type='button';b.addEventListener('click',action);return b;}
+function withIcon(label,icon){
+ if(icon){const mark=el(label,'span','td-label-icon',icon);mark.setAttribute('aria-hidden','true');label.prepend(mark);}
+ return label;
+}
+function button(parent,text,action,cls='',icon){const b=withIcon(el(parent,'button','td-button '+cls,text),icon);b.type='button';b.addEventListener('click',action);return b;}
 function select(parent,options,value,change){const s=el(parent,'select','td-select');for(const [v,label]of options){const o=el(s,'option','',label);o.value=v;}s.value=value;s.addEventListener('change',()=>change(s.value));return s;}
 function empty(parent,text){el(parent,'div','td-empty',text);}
-function heading(parent,kicker,title,detail){const h=el(parent,'div','td-section-heading');if(kicker)el(h,'div','td-eyebrow',kicker);el(h,'h2','',title);if(detail)el(h,'p','td-muted',detail);return h;}
-function panel(parent,title,action){const p=el(parent,'section','td-panel');const h=el(p,'div','td-panel-heading');el(h,'h3','',title);if(action)action(h);return p;}
+function heading(parent,kicker,title,detail,icon){const h=el(parent,'div','td-section-heading');if(kicker)el(h,'div','td-eyebrow',kicker);withIcon(el(h,'h2','',title),icon);if(detail)el(h,'p','td-muted',detail);return h;}
+function panel(parent,title,action,icon){const p=el(parent,'section','td-panel');const h=el(p,'div','td-panel-heading');withIcon(el(h,'h3','',title),icon);if(action)action(h);return p;}
 const pageNames={journal:'灵感与复盘',courses:'课程整理',plans:'计划',home:'首页',today:'今日待办',calendar:'日程概览',timeline:'时间轴',quadrants:'四象限',inbox:'待办箱',lists:'分类清单',assistant:'Codex 助手',trash:'回收站'};
+const pageIcons={home:'🏡',today:'📝',calendar:'📅',quadrants:'🧩',timeline:'🕰️',plans:'🎯',inbox:'📥',lists:'🗂️',trash:'🗑️',journal:'💡',courses:'📚',assistant:'🤖'};
 function sortTasks(tasks){return [...tasks].sort((a,b)=>(a.status==='done')-(b.status==='done')||(a.date||'9999').localeCompare(b.date||'9999')||(a.startTime||'').localeCompare(b.startTime||'')||a.title.localeCompare(b.title));}
 function isOverdue(task,today){return task.status==='open'&&task.date&&(task.endDate||task.date)<today;}
 function filtered(view,tasks){const s=view.state;return sortTasks(tasks.filter(t=>!t.deleted&&(!s.list||t.listId===s.list)&&(s.showDone||t.status!=='done')&&(!s.query||t.title.toLowerCase().includes(s.query.toLowerCase()))));}
@@ -32,7 +37,7 @@ function taskRow(view,parent,t){
 }
 function taskList(view,parent,tasks,message='这里暂时没有任务'){if(!tasks.length)return empty(parent,message);for(const t of tasks)taskRow(view,parent,t);}
 function overdueList(view,parent,tasks){
- const p=view.plugin,box=panel(parent,`逾期待处理 · ${tasks.length}`);
+ const p=view.plugin,box=panel(parent,`逾期待处理 · ${tasks.length}`,null,'⏳');
  if(!tasks.length){view.state.overdueSelection?.clear();return empty(box,'没有符合条件的逾期任务');}
  const selected=view.state.overdueSelection??=new Set();
  const entries=tasks.map(task=>({task,token:p.store.token('task',task.id)}));
@@ -63,11 +68,11 @@ function overdueList(view,parent,tasks){
 }
 function focusBar(view,parent,themeHome=false){
  const p=view.plugin,box=el(parent,'section','td-focus'),left=el(box,'div','');
- if(themeHome)el(left,'h3','td-theme-focus-heading','专注计时');
- else el(left,'div','td-eyebrow','FOCUS / 专注');
+ if(themeHome)withIcon(el(left,'h3','td-theme-focus-heading','专注计时'),'⏱️');
+ else withIcon(el(left,'div','td-eyebrow','FOCUS / 专注'),'⏱️');
  el(left,'div','td-focus-title',p.timer?.title||'留一段时间，专注当下');const time=el(box,'div','td-clock',C.duration(p.timer?C.elapsed(p.timer):0));time.dataset.timer='true';
  const actions=el(box,'div','td-focus-actions');
- if(!p.timer)button(actions,'开始计时',()=>p.run(()=>p.startTimer(null)),'mod-cta');
+ if(!p.timer)button(actions,'开始计时',()=>p.run(()=>p.startTimer(null)),'mod-cta','▶️');
  else{
   button(actions,p.timer.runningSince==null?'继续':'暂停',()=>p.run(()=>p.toggleTimer())).disabled=!!p.finishing;
   button(actions,p.finishing?'保存中…':'结束并保存',()=>p.run(()=>p.finishTimer()),'mod-cta').disabled=!!p.finishing;
@@ -79,7 +84,7 @@ function themeWeek(view,target,all,today){
  const box=panel(target,'本周安排',h=>button(h,'周时间轴 ↗',()=>{
   Object.assign(view.state,{timelineMode:'week',timelineDate:date});
   view.go('timeline');
- },'td-link'));
+ },'td-link'),'🗓️');
  const strip=el(box,'div','td-theme-week');
  strip.setAttribute('role','group');
  strip.setAttribute('aria-label','选择本周日期');
@@ -119,7 +124,7 @@ function renderCompletionTrend(parent,tasks,today){
  const days=D.completionTrend(tasks,today);
  const total=days.reduce((sum,day)=>sum+day.count,0);
  const peak=Math.max(1,...days.map(day=>day.count));
- const box=panel(parent,'近 14 天任务完成趋势');
+ const box=panel(parent,'近 14 天任务完成趋势',null,'📈');
  el(box,'p','td-trend-total',`共完成 ${total} 项 · 按实际完成日期`);
  const scroll=el(box,'div','td-trend-scroll');
  scroll.tabIndex=0;
@@ -192,7 +197,7 @@ function home(view,parent){
   stats:target=>{const stats=el(target,'div','td-stats');for(const [label,value,detail,action]of metrics){const card=el(stats,'div','td-stat');el(card,'div','td-muted',label);el(card,'strong','',value);if(action)button(card,detail,action,'td-link');else el(card,'small','td-muted',detail);}},
   plans:target=>P.summary(view,target,{el,button,select,heading,panel},scenerySrc),
   trend:target=>renderCompletionTrend(target,all,today),
-  week:target=>{if(themeHome)return themeWeek(view,target,all,today);const box=panel(target,'本周任务',h=>button(h,'周时间轴 ↗',()=>{view.state.timelineMode='week';view.go('timeline');},'td-link')),scroll=el(box,'div','td-task-scroll'),days=C.weekDates(today);taskList(view,scroll,sortTasks(all.filter(t=>days.some(d=>C.taskOnDate(t,d)))),'本周还没有任务');},
+  week:target=>{if(themeHome)return themeWeek(view,target,all,today);const box=panel(target,'本周任务',h=>button(h,'周时间轴 ↗',()=>{view.state.timelineMode='week';view.go('timeline');},'td-link'),'🗓️'),scroll=el(box,'div','td-task-scroll'),days=C.weekDates(today);taskList(view,scroll,sortTasks(all.filter(t=>days.some(d=>C.taskOnDate(t,d)))),'本周还没有任务');},
   focus:target=>focusBar(view,target,themeHome),
   inspiration:target=>J.renderInspiration(view,target,{el,button,select,panel}),
   reflection:target=>compact?H.renderReflectionSummary(view,target,{el,button,panel}):J.renderReflection(view,target,{el,button,select,panel}),
@@ -200,9 +205,9 @@ function home(view,parent){
    const todo=panel(target,'今日待办',h=>{
     const actions=el(h,'div','td-heading-actions');
     if(themeHome&&overdue.length)button(actions,`逾期 ${overdue.length} 项`,()=>view.showOverdue(),'td-theme-overdue');
-    button(actions,'快速记任务',()=>p.quickTask(),themeHome?'mod-cta':'td-link');
+    button(actions,'快速记任务',()=>p.quickTask(),themeHome?'mod-cta':'td-link','✏️');
     if(!themeHome)button(actions,'＋ 新建',()=>p.editTask(null,{date:today}),'td-link');
-   });
+   },pageIcons.today);
    const scroll=el(todo,'div','td-task-scroll');
    const tabletPreview=themeHome&&p.layoutDevice==='tablet';
    taskList(view,scroll,tabletPreview?tasks.slice(0,3):tasks,'今天还没有安排，写下第一件想做的事。');
@@ -212,8 +217,8 @@ function home(view,parent){
    },'td-link');
    if(!themeHome&&overdue.length)button(todo,`${overdue.length} 项逾期，点击处理 →`,()=>view.showOverdue(),'td-overdue td-link');
   },
-  recent:target=>{const recent=panel(target,'最近笔记',h=>select(h,[['modified','最近修改'],['created','最近创建']],p.store.settings.recentSort||'modified',v=>p.run(()=>p.updateSettings({recentSort:v}))));const scroll=el(recent,'div','td-note-scroll');scroll.setAttribute('aria-label','最近笔记列表');const exclude=p.store.settings.excludedFolders||[];const recentNotes=notes.filter(f=>!exclude.some(x=>f.path.startsWith(x+'/'))).sort((a,b)=>(p.store.settings.recentSort==='created'?b.stat.ctime-a.stat.ctime:b.stat.mtime-a.stat.mtime)).slice(0,50);if(!recentNotes.length)empty(scroll,'笔记会显示在这里');for(const f of recentNotes){const b=button(scroll,'',()=>p.app.workspace.openLinkText(f.path,'',false),'td-note');el(b,'span','',f.basename||f.path.split('/').pop().replace(/\.md$/,''));el(b,'small','td-muted',f.path);}},
-  custom:target=>{const custom=panel(target,'我的笔记统计',h=>button(h,'＋ 添加统计',()=>p.editStat(),'td-link'));const cards=el(custom,'div','td-custom-stats');if(!(p.store.settings.stats||[]).length)empty(cards,'添加文件夹或标签，观察知识积累。');for(const stat of p.store.settings.stats||[]){const matches=notes.filter(f=>C.matchesNote(f.path,p.noteTags(f),stat));const card=el(cards,'div','td-custom-stat');button(card,`${stat.kind==='tag'?'#':'▱'} ${stat.value}`,()=>p.showNotes(stat.value,matches),'td-link');el(card,'strong','',matches.length);button(card,'移除',()=>p.run(()=>p.updateSettings({stats:p.store.settings.stats.filter(x=>x.id!==stat.id)})),'td-small td-muted');}},
+  recent:target=>{const recent=panel(target,'最近笔记',h=>select(h,[['modified','最近修改'],['created','最近创建']],p.store.settings.recentSort||'modified',v=>p.run(()=>p.updateSettings({recentSort:v}))),'📓');const scroll=el(recent,'div','td-note-scroll');scroll.setAttribute('aria-label','最近笔记列表');const exclude=p.store.settings.excludedFolders||[];const recentNotes=notes.filter(f=>!exclude.some(x=>f.path.startsWith(x+'/'))).sort((a,b)=>(p.store.settings.recentSort==='created'?b.stat.ctime-a.stat.ctime:b.stat.mtime-a.stat.mtime)).slice(0,50);if(!recentNotes.length)empty(scroll,'笔记会显示在这里');for(const f of recentNotes){const b=button(scroll,'',()=>p.app.workspace.openLinkText(f.path,'',false),'td-note');el(b,'span','',f.basename||f.path.split('/').pop().replace(/\.md$/,''));el(b,'small','td-muted',f.path);}},
+  custom:target=>{const custom=panel(target,'我的笔记统计',h=>button(h,'＋ 添加统计',()=>p.editStat(),'td-link'),'📊');const cards=el(custom,'div','td-custom-stats');if(!(p.store.settings.stats||[]).length)empty(cards,'添加文件夹或标签，观察知识积累。');for(const stat of p.store.settings.stats||[]){const matches=notes.filter(f=>C.matchesNote(f.path,p.noteTags(f),stat));const card=el(cards,'div','td-custom-stat');button(card,`${stat.kind==='tag'?'#':'▱'} ${stat.value}`,()=>p.showNotes(stat.value,matches),'td-link');el(card,'strong','',matches.length);button(card,'移除',()=>p.run(()=>p.updateSettings({stats:p.store.settings.stats.filter(x=>x.id!==stat.id)})),'td-small td-muted');}},
   assistant:target=>compact?H.renderAssistantSummary(view,target,{el,button,panel}):A.renderAssistant(view,target,{el,button,select,heading,panel,empty})
  };
  if(themeHome)placeThemeHome(parent,blocks,includePlans);
@@ -239,9 +244,9 @@ function calendar(view,parent){
 function timeline(view,parent){S.renderTimeline(view,parent,{el,button,select},filtered(view,[...view.plugin.store.tasks.values()]));}
 function workspace(view,parent){
  const p=view.plugin,s=view.state;
- const switcher=el(parent,'div','td-work-switcher');for(const[key,name]of [['today','列表'],['calendar','月历'],['quadrants','四象限'],['timeline','时间轴'],['plans','计划']])button(switcher,name,()=>view.go(key),'td-button'+(s.page===key?' is-active':''));
+ const switcher=el(parent,'div','td-work-switcher');for(const[key,name]of [['today','列表'],['calendar','月历'],['quadrants','四象限'],['timeline','时间轴'],['plans','计划']])button(switcher,name,()=>view.go(key),'td-button'+(s.page===key?' is-active':''),pageIcons[key]);
  if(s.page==='plans')return P.renderPlans(view,parent,{el,button,select,heading,panel});
- const h=el(parent,'div','td-work-heading');heading(h,'PLAN / DO / REFLECT',pageNames[s.page],s.page==='quadrants'?'今日处理仅显示安排在今天的任务。':'让安排与实际投入，清晰可见。');button(h,'＋ 新建任务',()=>p.editTask(null,{date:['today','quadrants'].includes(s.page)?C.localDate():''}),'mod-cta');
+ const h=el(parent,'div','td-work-heading');heading(h,'PLAN / DO / REFLECT',pageNames[s.page],s.page==='quadrants'?'今日处理仅显示安排在今天的任务。':'让安排与实际投入，清晰可见。',pageIcons[s.page]);button(h,'＋ 新建任务',()=>p.editTask(null,{date:['today','quadrants'].includes(s.page)?C.localDate():''}),'mod-cta');
  const toolbar=el(parent,'div','td-toolbar');
  select(toolbar,[['','全部清单'],...(p.store.settings.lists||[]).map(l=>[l.id,l.name])],s.list,v=>{s.list=v;view.render();});
  const search=el(toolbar,'input','td-input');search.placeholder='搜索任务…';search.value=s.query;search.setAttribute('aria-label','搜索任务');search.addEventListener('change',()=>{s.query=search.value;view.render();});
@@ -280,14 +285,14 @@ function render(view){
  const themeActive=G.themeIsActive(host.ownerDocument);
  host.classList.toggle('td-congrong',themeActive);
  const aside=el(root,'header','td-sidebar td-topbar');el(aside,'div','td-brand','○  从容');el(aside,'div','td-brand-sub','TODO WORKSPACE');
- const nav=el(aside,'nav','td-navigation');for(const [key,name]of [['home','首页'],['today','待办与日程'],['journal','灵感与复盘'],['courses','课程整理'],['assistant','Codex 助手']])button(nav,name,()=>view.go(key),'td-nav'+((key===view.state.page||key==='today'&&['calendar','timeline','quadrants','plans','inbox','lists','trash'].includes(view.state.page))?' is-active':''));
+ const nav=el(aside,'nav','td-navigation');for(const [key,name]of [['home','首页'],['today','待办与日程'],['journal','灵感与复盘'],['courses','课程整理'],['assistant','Codex 助手']])button(nav,name,()=>view.go(key),'td-nav'+((key===view.state.page||key==='today'&&['calendar','timeline','quadrants','plans','inbox','lists','trash'].includes(view.state.page))?' is-active':''),pageIcons[key]);
  const switcher=el(aside,'div','td-scheme-switch');
  switcher.setAttribute('role','group');switcher.setAttribute('aria-label','白天与夜晚模式');
  for(const [scheme,label] of [['warm','白天'],['night','夜晚']]){
   const option=button(switcher,label,()=>p.changeScheme(scheme));
   option.setAttribute('aria-pressed',String((host.dataset.tdMode==='night')===(scheme==='night')));
  }
- button(aside,'主题',()=>p.themePreferences(),'td-theme-button').setAttribute('aria-label','工作台主题');
+ button(aside,'主题',()=>p.themePreferences(),'td-theme-button','🎨').setAttribute('aria-label','工作台主题');
  const footer=el(aside,'div','td-sidebar-footer');el(footer,'span','td-muted','数据保存在笔记库');button(footer,'刷新数据',()=>p.run(()=>p.reload()),'td-link');button(footer,'偏好设置',()=>p.preferences(),'td-link');
  const main=el(root,'main','td-main');const errors=[...p.store.errors,...(p.journal?.errors||[]),...(p.courses?.errors||[])];if(errors.length){const banner=el(main,'div','td-warning');el(banner,'span','',`${errors.length} 个数据文件需要检查，原文件已保留。`);button(banner,'查看详情',()=>p.showErrors(),'td-link');}
  if(view.state.page==='home')home(view,main);else if(view.state.page==='journal')J.renderJournal(view,main,{el,button,select,panel,heading,empty});else if(view.state.page==='courses')require('./course-view.cjs').renderCourses(view,main,{el,button,select,panel,heading,empty});else if(view.state.page==='assistant')A.renderAssistant(view,main,{el,button,select,heading,panel,empty});else{workspace(view,main);focusBar(view,main);}

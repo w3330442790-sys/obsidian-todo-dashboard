@@ -27,7 +27,7 @@ const write = (file,value) => fs.writeFileSync(file,JSON.stringify(value));
 write(path.join(profile,'obsidian.json'),{vaults:{'00c0ffee11223344':{path:vault,ts:Date.now(),open:true}}});
 write(path.join(config,'appearance.json'),{theme:'moonstone',cssTheme:'从容'});
 write(path.join(config,'community-plugins.json'),['todo-dashboard']);
-for (const file of ['Inbox.md','Projects/Brief.md','Projects/Today.md','Research/Paper.md']) fs.writeFileSync(path.join(vault,file),'# Isolated fixture');
+for (const file of ['Inbox.md','Projects/Brief.md','Projects/Today.md','Research/Paper.md']) fs.writeFileSync(path.join(vault,file),'# Isolated fixture\n\n[[Projects/Today|Test note link]]');
 
 async function launch() {
   const server = net.createServer();
@@ -87,13 +87,13 @@ async function waitForSavedScheme(scheme){
 }
 
 async function enableFixturePlugin(page){
-  await page.waitForFunction(()=>app.plugins.isEnabled()||document.querySelector('.mod-trust-folder'));
+  await page.waitForFunction(()=>window.app?.plugins?.isEnabled()||document.querySelector('.mod-trust-folder'));
   const trust=page.locator('.mod-trust-folder .modal-button-container button').first();
   if(await trust.isVisible()){
     await trust.click();
     await page.evaluate(()=>app.plugins.setEnable(true));
   }
-  await page.waitForFunction(()=>app.plugins.plugins['todo-dashboard']?.ready===true);
+  await page.waitForFunction(()=>window.app?.plugins?.plugins['todo-dashboard']?.ready===true);
 }
 
 const renderedRoot = page => page.evaluate(()=>{
@@ -118,6 +118,20 @@ async function main(){
     const shell=page.locator('.td-host');
     const size=await shell.boundingBox();
     assert.ok(size.width>600);
+    await page.getByRole('button',{name:'工作台主题',exact:true}).click();
+    await page.getByLabel('白天配色',{exact:true}).selectOption('mint');
+    await page.getByLabel('夜晚配色',{exact:true}).selectOption('violet-night');
+    await page.getByRole('button',{name:'保存主题',exact:true}).click();
+    await page.getByRole('heading',{name:'Obsidian 全局主题',exact:true}).waitFor({state:'detached'});
+    const sidebar=page.locator('.nav-folder-title[data-path="Projects"]');
+    assert.equal(await sidebar.evaluate(el=>getComputedStyle(el).getPropertyValue('--interactive-accent').trim()),'#186951');
+    await page.evaluate(()=>app.workspace.openLinkText('Inbox.md','',true,{state:{mode:'preview'}}));
+    const link=page.locator('.markdown-preview-view .internal-link').filter({hasText:'Test note link'});
+    await link.waitFor();
+    assert.equal(await link.evaluate(el=>getComputedStyle(el).color),'rgb(24, 105, 81)');
+    await page.evaluate(()=>app.plugins.plugins['todo-dashboard'].open());
+    assert.equal(await page.locator('.td-theme-week-day[aria-pressed=true]').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(24, 105, 81)');
+    assert.equal(await page.locator('.td-clock').evaluate(el=>getComputedStyle(el).color),'rgb(24, 105, 81)');
     const quick=page.locator('[data-widget=today] .td-panel-heading').getByRole('button',{name:'快速记任务'});
     await quick.click();
     const quickInput=page.getByPlaceholder('想记下什么？',{exact:true});
@@ -150,6 +164,7 @@ async function main(){
     await page.getByRole('button',{name:'夜晚',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:'夜晚',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await page.evaluate(()=>document.body.classList.contains('theme-dark')),true);
+    assert.equal(await sidebar.evaluate(el=>getComputedStyle(el).getPropertyValue('--interactive-accent').trim()),'#d4bfff');
     await waitForSavedScheme('obsidian');
     await page.screenshot({path:path.join(run,'03-native-night.png')});
     await test.close();
@@ -158,6 +173,7 @@ async function main(){
     await enableFixturePlugin(test.page);
     await test.page.getByRole('button',{name:'夜晚',exact:true}).waitFor();
     assert.equal(await test.page.getByRole('button',{name:'夜晚',exact:true}).getAttribute('aria-pressed'),'true');
+    assert.equal(await test.page.evaluate(()=>getComputedStyle(document.body).getPropertyValue('--interactive-accent').trim()),'#d4bfff');
     assert.equal((await renderedRoot(test.page))[0],'Inbox.md');
     assert.deepEqual(await nested(test.page),['Projects/Today.md','Projects/Brief.md']);
     await test.page.getByRole('button',{name:'手动排序笔记库根目录'}).click();

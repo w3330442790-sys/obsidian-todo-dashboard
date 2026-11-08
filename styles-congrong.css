@@ -39,8 +39,8 @@
 }
 
 .td-theme-week-day[aria-pressed=true] {
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
+  background: var(--td-accent);
+  color: var(--td-on-accent, white);
 }
 
 .td-main.td-theme-home {
@@ -214,7 +214,6 @@
 }
 
 .td-theme-home .td-focus .td-clock {
-  color: var(--text-accent);
   margin: 0;
   font-size: clamp(19px, 2.15vw, 33px);
   letter-spacing: 0;

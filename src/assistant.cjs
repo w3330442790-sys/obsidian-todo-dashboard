@@ -73,7 +73,7 @@ class AssistantController{
  close(){this.operation++;this.connectionEpoch++;this.connecting=null;this.clearApprovals();this.client?.close();this.state.connected=false;this.state.busy=false;this.resumed=false;this.persist();this.listeners.clear();}
 }
 function renderAssistant(view,parent,ui){
- const{el,button,select,panel}=ui,p=view.plugin,c=p.assistant;if(!c)return;const box=panel(parent,'Codex 笔记助手',h=>{button(h,'连接设置',()=>p.assistantPreferences(),'td-link');button(h,'整理课程 ↗',()=>view.go('courses'),'td-link');if(view.state.page==='home')button(h,'展开 ↗',()=>view.go('assistant'),'td-link');});box.classList.add('td-assistant');
+ const{el,button,select,panel}=ui,p=view.plugin,c=p.assistant;if(!c)return;const box=panel(parent,'Codex 笔记助手',h=>{button(h,'连接设置',()=>p.assistantPreferences(),'td-link');button(h,'整理课程 ↗',()=>view.go('courses'),'td-link');if(view.state.page==='home')button(h,'展开 ↗',()=>view.go('assistant'),'td-link');},'🤖');box.classList.add('td-assistant');
  const status=el(box,'div','td-assistant-status'),error=el(box,'div','td-error');error.setAttribute('role','alert');
  if(!c.desktop){el(box,'p','td-muted','文件助手目前在 Windows 电脑运行。安卓可正常使用风景、布局和待办；远程连接电脑将在后续版本单独接入。');return;}
  const toolbar=el(box,'div','td-assistant-toolbar');const connect=button(toolbar,'连接 Codex',()=>p.run(()=>c.connect()));

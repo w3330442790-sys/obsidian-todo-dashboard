@@ -2,7 +2,7 @@
 const C=require('./core.cjs'),R=require('./reflection.cjs');
 
 function renderReflectionSummary(view,parent,ui){
- const{el,button,panel}=ui,p=view.plugin,s=view.state.journal||{},box=panel(parent,'回顾复盘');
+ const{el,button,panel}=ui,p=view.plugin,s=view.state.journal||{},box=panel(parent,'回顾复盘',null,'🌱');
  box.classList.add('td-home-reflection');
  const today=C.localDate(),tasks=[...(p.store?.tasks?.values()||[])],sessions=[...(p.store?.sessions?.values()||[])];
  const completed=tasks.filter(t=>!t.deleted&&t.status==='done'&&t.completedAt===today).length;
@@ -31,7 +31,7 @@ function renderReflectionSummary(view,parent,ui){
 }
 
 function renderAssistantSummary(view,parent,ui){
- const{el,button,panel}=ui,c=view.plugin.assistant,box=panel(parent,'Codex 笔记助手');
+ const{el,button,panel}=ui,c=view.plugin.assistant,box=panel(parent,'Codex 笔记助手',null,'🤖');
  box.classList.add('td-assistant-shortcuts');
  const status=el(box,'div','td-assistant-status');
  function paint(){
