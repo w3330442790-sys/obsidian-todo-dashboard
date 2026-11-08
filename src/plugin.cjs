@@ -96,9 +96,8 @@ class TodoPlugin extends Plugin{
   this.addCommand({id:'open-codex',name:'打开 Codex 笔记助手',callback:()=>this.open('assistant')});
   this.addCommand({id:'new-task',name:'新建任务',callback:()=>this.editTask(null,{date:C.localDate()})});
   this.addCommand({id:'quick-task',name:'快速记任务',callback:()=>this.quickTask()});
-  this.explorerOrder=new ExplorerOrder(this,{notice:message=>new Notice(message),icon:setIcon});
+  this.explorerOrder=new ExplorerOrder(this,{icon:setIcon});
   this.explorerOrder.start();
-  this.addCommand({id:'sort-files',name:'手动排序文件与文件夹',callback:()=>this.run(()=>this.explorerOrder.openRoot())});
   this.themeDocuments=new Set([document]);
   if(typeof this.app.workspace.on==='function'){
    this.registerEvent(this.app.workspace.on('css-change',()=>this.updateAppearance()));
