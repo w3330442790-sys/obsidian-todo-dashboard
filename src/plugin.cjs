@@ -6,6 +6,9 @@ const VIEW='todo-dashboard-view';
 const G=require('./global-theme.cjs');
 const {ExplorerOrder}=require('./explorer-order.cjs');
 const Literature=require('./literature-view.cjs');
+const LiteratureData=require('./literature.cjs');
+const LiteraturePdf=require('./literature-pdf.cjs');
+const {renderReaderTools}=require('./literature-reader.cjs');
 const DEFAULTS={lists:[{id:'study',name:'学习',color:'#149e9a'},{id:'work',name:'工作',color:'#6488d8'},{id:'life',name:'生活',color:'#d58c48'}],stats:[],recentSort:'modified',excludedFolders:[]};
 function clone(o){return JSON.parse(JSON.stringify(o));}
 function taskDraft(seed){
@@ -54,8 +57,8 @@ class TaskModal extends Modal{
 }
 class SimpleModal extends Modal{
  constructor(p,title,build){super(p.app);this.p=p;this.titleText=title;this.build=build;}
- onOpen(){this.contentEl.classList.add('td-modal');D.applyTheme(this.contentEl,this.p.store.settings.theme);V.heading(this.contentEl,'TODO WORKSPACE',this.titleText);this.build(this.contentEl,this);}
- onClose(){this.contentEl.replaceChildren();}
+ onOpen(){this.contentEl.classList.add('td-modal');D.applyTheme(this.contentEl,this.p.store.settings.theme);V.heading(this.contentEl,'TODO WORKSPACE',this.titleText);this.cleanup=this.build(this.contentEl,this);}
+ onClose(){if(typeof this.cleanup==='function')this.cleanup();this.contentEl.replaceChildren();}
 }
 class DashboardView extends ItemView{
  constructor(leaf,p){super(leaf);this.plugin=p;this.state={page:'home',month:C.localDate().slice(0,7),selectedDate:C.localDate(),timelineDate:C.localDate(),list:'',showDone:true,query:''};}
@@ -111,6 +114,8 @@ class TodoPlugin extends Plugin{
   this.themeDocuments=new Set([document]);
   if(typeof this.app.workspace.on==='function'){
    this.registerEvent(this.app.workspace.on('css-change',()=>this.updateAppearance()));
+   this.registerEvent(this.app.workspace.on('active-leaf-change',leaf=>this.attachLiteraturePdfAction(leaf?.view)));
+   this.registerEvent(this.app.workspace.on('file-open',()=>this.attachLiteraturePdfAction(this.app.workspace.getMostRecentLeaf?.()?.view)));
    this.registerEvent(this.app.workspace.on('window-open',(_,win)=>{
     this.themeDocuments.add(win.document);
     if(this.ready)G.applyAppPalette(win.document,this.store.settings);
@@ -142,10 +147,11 @@ class TodoPlugin extends Plugin{
    if(!this.store.errors.some(e=>e.path===settingsPath)){const compact=D.migrateCompactSettings(this.store.settings);if(compact!==this.store.settings)await this.store.saveSettings(compact,this.store.token('settings','settings'));}
    await this.run(()=>this.explorerOrder.initialize());
    await this.repairRepeats();await this.loadGalleryCredits();this.ready=true;this.applyAppPalette();this.refresh();
+   this.attachLiteraturePdfAction(this.app.workspace.getMostRecentLeaf?.()?.view);
   })().catch(error=>{this.initError=error.message;this.refresh();throw error;}).finally(()=>{this.initializing=null;});
   return this.initializing;
  }
- onunload(){this.jobAbort?.abort();this.explorerOrder?.stop();for(const view of this.views)view.layoutCleanup?.();this.themeDocuments?.forEach(doc=>G.applyAppPalette(doc));this.themeDocuments?.clear();clearTimeout(this.reloadHandle);clearTimeout(this.renderHandle);this.assistant?.close();this.persistTimer();}
+ onunload(){this.jobAbort?.abort();this.literaturePdfAction?.remove();this.explorerOrder?.stop();for(const view of this.views)view.layoutCleanup?.();this.themeDocuments?.forEach(doc=>G.applyAppPalette(doc));this.themeDocuments?.clear();clearTimeout(this.reloadHandle);clearTimeout(this.renderHandle);this.assistant?.close();this.persistTimer();}
  async run(fn){try{return await fn();}catch(e){console.error('[Todo 工作台]',e);new Notice('操作未完成：'+e.message,8000);}}
  refresh(){if(this.interacting){this.pendingRefresh=true;return;}this.pendingRefresh=false;for(const v of this.views)v.render();}
  tick(today=C.localDate()){if(this.lastDay!==today){this.lastDay=today;this.refresh();}for(const view of this.views){const now=new Date();for(const e of view.contentEl.querySelectorAll('[data-now-line]'))e.style.top=(now.getHours()+now.getMinutes()/60)*Number(e.dataset.hourHeight||48)+'px';for(const e of view.contentEl.querySelectorAll('[data-timer]'))e.textContent=C.duration(this.timer?C.elapsed(this.timer):0);const totals=R.focusTotals([...(this.store.sessions?.values()||[])],this.timer);for(const e of view.contentEl.querySelectorAll('[data-focus-total]'))e.textContent=C.duration(totals[e.dataset.focusTotal]||0);}}
@@ -250,7 +256,7 @@ class TodoPlugin extends Plugin{
   }else{const result=C.completeTask(current);await this.saveTask(result.task);const revision=this.store.token?.('task',current.id);if(result.next){await this.store.ensureTask(result.next);await this.saveTask({...result.task,repeatIssued:true},revision);}}
   this.refresh();
  }
- async generateJob(prompt,{images=[],signal}={}){if(!this.assistant?.desktop)throw Error('Codex 自动整理请在 Windows 电脑使用');if(this.jobBusy||this.assistant.state.busy)throw Error('Codex 正在处理其他请求，请先等待或停止');this.jobBusy=true;const controller=new AbortController(),abort=()=>controller.abort();this.jobAbort=controller;signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)controller.abort();try{const executable=this.assistant.state.executable||A.findExecutable(),cwd=this.app.vault.adapter.getBasePath?.();if(!executable||!cwd)throw Error('请先在 Codex 连接设置检查本机 CLI 和笔记库目录');return await new GenerationRunner({executable,cwd,model:this.assistant.state.model}).run(prompt,{images,signal:controller.signal});}finally{signal?.removeEventListener('abort',abort);this.jobBusy=false;this.jobAbort=null;}}
+ async generateJob(prompt,{images=[],signal,workingDirectory,webSearch=true}={}){if(!this.assistant?.desktop)throw Error('Codex 自动整理请在 Windows 电脑使用');if(this.jobBusy||this.assistant.state.busy)throw Error('Codex 正在处理其他请求，请先等待或停止');this.jobBusy=true;const controller=new AbortController(),abort=()=>controller.abort();this.jobAbort=controller;signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)controller.abort();try{const executable=this.assistant.state.executable||A.findExecutable(),cwd=workingDirectory||this.app.vault.adapter.getBasePath?.();if(!executable||!cwd)throw Error('请先在 Codex 连接设置检查本机 CLI 和笔记库目录');return await new GenerationRunner({executable,cwd,model:this.assistant.state.model}).run(prompt,{images,signal:controller.signal,webSearch});}finally{signal?.removeEventListener('abort',abort);this.jobBusy=false;this.jobAbort=null;}}
  coursePreferences(){new SimpleModal(this,'讯飞听见本机连接',(root,m)=>{V.el(root,'p','td-muted','使用本机 xftj-transcribe 工具和官方授权。凭据不写入笔记库；仅列出录音并读取已有稿，不发起付费转写。');const script=formField(root,'xftj.py 完整路径（留空自动查找）','text',this.xftjSettings.script||'');const python=formField(root,'Python 可执行文件或完整路径','text',this.xftjSettings.python||'python');V.button(root,'保存讯飞连接设置',()=>{if(this.views.size&&[...this.views].some(v=>v.state.course?.busy)){new Notice('请先停止课程操作');return;}this.xftjSettings={script:script.value.trim(),python:python.value.trim()||'python'};localStorage.setItem(this.localKey+':xftj',JSON.stringify(this.xftjSettings));this.courseBridge=new XftjBridge(this.xftjSettings);this.courses.bridge=this.courseBridge;m.close();this.refresh();},'mod-cta');}).open();}
  async applyCompactLayout(){const token=this.store.token('settings','settings');await this.updateSettings(D.applyCompactSettings(this.store.settings),token);}
  async restoreHomeLayout(){const token=this.store.token('settings','settings');await this.updateSettings(D.restoreCompactSettings(this.store.settings),token);}
@@ -368,6 +374,105 @@ class TodoPlugin extends Plugin{
  editLiterature(paper){new SimpleModal(this,paper?'编辑文献':'添加文献',(root,modal)=>Literature.editLiterature(this,root,modal,paper,literatureUI)).open();}
  readingProgress(paper){new SimpleModal(this,'记录阅读进度',(root,modal)=>Literature.editProgress(this,root,modal,paper,literatureUI)).open();}
  importLiterature(){new SimpleModal(this,'导入 Zotero',(root,modal)=>Literature.importLiterature(this,root,modal,literatureUI)).open();}
+ literatureForPdf(file){
+  if(file?.extension?.toLowerCase()!=='pdf')return;
+  return [...this.store.literature.values()].find(paper=>!paper.deleted&&paper.pdfPath===file.path);
+ }
+ attachLiteraturePdfAction(view){
+  const paper=this.literatureForPdf(view?.file);
+  if(paper&&this.literaturePdfView===view&&this.literaturePdfAction?.isConnected)return;
+  this.literaturePdfAction?.remove();
+  this.literaturePdfView=null;
+  this.literaturePdfAction=null;
+  if(!paper||typeof view.addAction!=='function')return;
+  const label='PDF 阅读与翻译';
+  const action=view.addAction('languages',label,()=>{
+   const current=this.literatureForPdf(view.file);
+   if(!current)return;
+   const doc=view.containerEl.ownerDocument;
+   const selection=doc.getSelection();
+   const node=selection?.anchorNode;
+   const element=node?.nodeType===1?node:node?.parentElement;
+   const selectedPage=element?.closest?.('[data-page-number]');
+   const isPdfText=selectedPage&&view.containerEl.contains(selectedPage);
+   const number=Number(isPdfText?selectedPage.dataset.pageNumber:
+    view.containerEl.querySelector('.pdf-toolbar input[type=number], input[type=number]')?.value);
+   this.showLiteratureReader(current,{
+    text:isPdfText?selection.toString().trim():'',
+    page:Number.isSafeInteger(number)&&number>0?number:undefined
+   });
+  });
+  action.setAttribute('aria-label',label);
+  action.addEventListener('mousedown',event=>event.preventDefault());
+  this.literaturePdfView=view;
+  this.literaturePdfAction=action;
+ }
+ openLiteraturePdf(paper,page=paper.currentPage){
+  const file=this.app.vault.getAbstractFileByPath(paper.pdfPath);
+  if(file?.extension?.toLowerCase()!=='pdf')throw Error('库内 PDF 未找到，请先同步或关联附件');
+  if(file.path.includes('#'))return this.app.workspace.getLeaf('tab').openFile(file);
+  return this.app.workspace.openLinkText(file.path+(page>0?'#page='+page:''),'',true);
+ }
+ saveLiteraturePage(id,page,totalPages){
+  const paper=this.store.literature.get(id);
+  if(!paper||paper.deleted)throw Error('文献记录已移出专区');
+  const token=this.store.token('literature',id);
+  return this.store.saveLiterature({...paper,currentPage:page,totalPages:totalPages??paper.totalPages,
+   status:paper.status==='unread'?'reading':paper.status,updatedAt:new Date().toISOString()},token).then(()=>this.refresh());
+ }
+ readLiteraturePage(paper,page,options){return LiteraturePdf.readLiteraturePdfPage(this,paper,page,options);}
+ showLiteratureReader(paper,seed){
+  new SimpleModal(this,'阅读与翻译',(root,modal)=>renderReaderTools(this,root,modal,paper,literatureUI,seed)).open();
+ }
+ async generateLiteratureTranslation(prompt,{image,signal}={}){
+  if(!this.assistant?.desktop)throw Error('自动翻译请在 Windows 使用本机 Codex');
+  const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
+  const cwd=await fs.mkdtemp(path.join(os.tmpdir(),'todo-literature-'));
+  const imagePath=path.join(cwd,'page.png');
+  try{
+   if(image)await fs.writeFile(imagePath,new Uint8Array(image));
+   return await this.generateJob(prompt,{images:image?[imagePath]:[],signal,workingDirectory:cwd,webSearch:false});
+  }finally{
+   if(image)await fs.unlink(imagePath).catch(()=>{});
+   await fs.rmdir(cwd).catch(()=>{});
+  }
+ }
+ showLiteraturePdfImport(paper){new SimpleModal(this,paper?'添加 PDF 附件':'导入 PDF',(root,modal)=>{
+  V.el(root,'p','td-muted',paper?'关联到文献：'+paper.title:'可批量选择 PDF。文件名用作初始标题，可稍后编辑书目信息。');
+  const input=formField(root,'PDF 文件','file');input.accept='.pdf,application/pdf';input.multiple=!paper;
+  const status=V.el(root,'p','td-muted');status.setAttribute('role','status');
+  const error=V.el(root,'p','td-error');error.setAttribute('role','alert');
+  const actions=V.el(root,'div','td-modal-actions');
+  const token=paper&&this.store.token('literature',paper.id);
+  V.button(actions,'关闭',()=>modal.close());
+  const submit=V.button(actions,'确认导入 PDF',async()=>{
+   const files=[...input.files];
+   if(!files.length||files.length>12){error.textContent='请选择 1–12 个 PDF 文件';return;}
+   submit.disabled=input.disabled=true;error.textContent='';
+   let imported=0,duplicates=0;
+   const errors=[];
+   for(const file of files){
+    try{
+     const result=await LiteraturePdf.importLiteraturePdf(this,file,{paper,token});
+     if(result.duplicate)duplicates++;else imported++;
+    }catch(failure){errors.push(file.name+'：'+failure.message);}
+   }
+   this.refresh();
+   status.textContent=`已导入 ${imported} 个 PDF · 已存在 ${duplicates} 个`;
+   error.textContent=errors.join('\n');
+   submit.disabled=input.disabled=false;
+   if(!errors.length)input.value='';
+  },'mod-cta');
+ }).open();}
+ showLiteratureCitation(paper){new SimpleModal(this,'复制引用',(root,modal)=>{
+  const bib=formField(root,'BibTeX','textarea',LiteratureData.literatureBibTeX(paper));bib.readOnly=true;bib.rows=8;
+  const status=V.el(root,'p','td-muted');status.setAttribute('role','status');
+  V.button(root,'复制 BibTeX',async()=>{
+   try{await root.ownerDocument.defaultView.navigator.clipboard.writeText(bib.value);status.textContent='已复制 BibTeX。';}
+   catch{bib.select();status.textContent='已选中 BibTeX，可以手动复制。';}
+  },'mod-cta');
+  V.button(root,'关闭',()=>modal.close(),'td-link');
+ }).open();}
  showOrderConflicts(){new SimpleModal(this,'处理文件树排序冲突',(root,modal)=>{
   const conflicts=this.explorerOrder.conflicts;
   if(!conflicts.length){V.empty(root,'当前没有文件树排序冲突。');return;}

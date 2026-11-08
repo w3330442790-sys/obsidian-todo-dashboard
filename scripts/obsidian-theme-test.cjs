@@ -7,6 +7,7 @@ const net = require('node:net');
 const {spawn} = require('node:child_process');
 const {setTimeout: delay} = require('node:timers/promises');
 const {chromium} = require(process.env.PLAYWRIGHT_PATH || 'playwright');
+const {pdfFixture} = require('../tests/fixtures/pdf-fixture.cjs');
 
 const root = path.resolve(__dirname,'..');
 const out = path.join(root,'artifacts','native-congrong');
@@ -244,6 +245,40 @@ async function main(){
     await conflictButton.waitFor({state:'detached'});
     assert.deepEqual((await renderedRoot(page)).slice(0,2),['Projects','Inbox.md']);
 
+    await page.getByRole('button',{name:'文献专区',exact:true}).click();
+    await page.getByRole('button',{name:'导入 PDF',exact:true}).click();
+    await page.getByLabel('PDF 文件',{exact:true}).setInputFiles({name:'Native reading fixture.pdf',mimeType:'application/pdf',
+      buffer:pdfFixture('This first page must remain unselected.','Second page is the reading test source.',' ')});
+    await page.getByRole('button',{name:'确认导入 PDF',exact:true}).click();
+    await page.getByText('已导入 1 个 PDF · 已存在 0 个',{exact:true}).waitFor();
+    await modal.getByRole('button',{name:'关闭',exact:true}).click();
+    const paperCard=page.locator('.td-lit-paper').filter({hasText:'Native reading fixture'});
+    await paperCard.getByRole('button',{name:'阅读与翻译',exact:true}).click();
+    await page.getByLabel('PDF 页码',{exact:true}).fill('2');
+    await page.getByRole('button',{name:'提取该页',exact:true}).click();
+    await page.getByText('已提取第 2 页，共 3 页。',{exact:true}).waitFor();
+    assert.equal(await page.getByLabel('原文选段',{exact:true}).inputValue(),'Second page is the reading test source.');
+    await page.getByRole('button',{name:'记住这一页',exact:true}).click();
+    await page.getByText('已将第 2 页记为续读位置。',{exact:true}).waitFor();
+    await page.getByRole('button',{name:'保存阅读摘录',exact:true}).click();
+    await page.getByText('阅读摘录已保存。',{exact:true}).waitFor();
+    await page.getByLabel('PDF 页码',{exact:true}).fill('3');
+    await page.getByRole('button',{name:'提取该页',exact:true}).click();
+    await page.getByText('第 3 页为图像页，翻译时会发送该页图像。',{exact:true}).waitFor();
+    await modal.getByRole('button',{name:'关闭',exact:true}).click();
+    await paperCard.getByRole('button',{name:'继续阅读',exact:true}).click();
+    const pdfText=page.getByText('Second page is the reading test source.',{exact:true});
+    await pdfText.waitFor();
+    await pdfText.evaluate(node=>{
+      const range=document.createRange();range.selectNodeContents(node);
+      const selection=document.getSelection();selection.removeAllRanges();selection.addRange(range);
+    });
+    await page.getByLabel('PDF 阅读与翻译',{exact:true}).click();
+    assert.equal(await page.getByLabel('PDF 页码',{exact:true}).inputValue(),'2');
+    assert.equal(await page.getByLabel('原文选段',{exact:true}).inputValue(),'Second page is the reading test source.');
+    await modal.getByRole('button',{name:'关闭',exact:true}).click();
+    await page.evaluate(()=>app.plugins.plugins['todo-dashboard'].open());
+
     await page.getByRole('button',{name:'夜晚',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:'夜晚',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await page.evaluate(()=>document.body.classList.contains('theme-dark')),true);
@@ -259,7 +294,7 @@ async function main(){
     assert.equal(await test.page.evaluate(()=>getComputedStyle(document.body).getPropertyValue('--interactive-accent').trim()),'#d4bfff');
     assert.deepEqual((await renderedRoot(test.page)).slice(0,2),['Projects','Inbox.md']);
     assert.deepEqual(await nested(test.page),['Projects/Brief.md','Projects/Today.md']);
-    console.log('PASS native Obsidian theme, drag-only sorting controls, legacy orders, mouse and touch dragging, and restart');
+    console.log('PASS native Obsidian PDF open, page extraction, selection, resume, and file-tree sync regressions');
     console.log(run);
   }catch(error){
     await test?.page.screenshot({path:path.join(run,'failure.png')}).catch(()=>{});

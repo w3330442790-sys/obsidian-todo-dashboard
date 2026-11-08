@@ -7,9 +7,12 @@
 ## 文献专区
 
 - 在顶栏进入「文献专区」。可以添加文献，或在 Zotero 导出 CSV 后用「导入 Zotero」预览并导入；也支持 CSL JSON 和 Zotero API JSON。重复条目会跳过。
+- 通过「导入 PDF」批量添加文件，或在已有条目中点击「添加 PDF」。附件保存在 `Todo工作台/literature-pdfs/`。同内容的附件复用；文件名用作初始标题。点击「打开 PDF」或「继续阅读」在 Obsidian 阅读器中打开文献。
 - 期刊标签显示 IF、JCR 分区和中科院大类、小类分区，可记录指标年份和来源。导出文件带有指标时可识别；如果使用 Zotero Journal Tags，也可选择 `journal-tags-cache.json`，按期刊名补充缺失指标。其余指标可手工填写。 [Zotero 导出说明](https://www.zotero.org/support/kb/exporting) · [Journal Tags 缓存说明](https://github.com/chen7447/journal-tags#使用)
-- 点击「记录进度」可记录阅读状态、已读至页和总页数。可关联库内 PDF 或笔记。文献记录和阅读进度保存在 `Todo工作台/literature/`。
-- 在 EasySync 同步整个 `Todo工作台/`，两端均升级至 0.5.0 后即可共享排序和文献。PDF 或阅读笔记也需要纳入同步。
+- 在「编辑文献」用分号分隔多个分类或主题标签；用顶部筛选器组合查看。点击「复制引用」可复制 BibTeX。可指定引用键，留空时使用文献的稳定 ID。
+- 在 PDF 内选中文本，再点标题栏的「PDF 阅读与翻译」图标可带入原文和页码。也可以从卡片打开「阅读与翻译」，粘贴选段或填写页码后点击「提取该页」。Windows 单页提取使用本机 Python/pypdf，图像页渲染使用 Poppler。点击「翻译」才会把选段或单页图像发给已登录的 Codex。译文可编辑后保存为 Markdown 摘录，并链接回原 PDF 页。
+- 「记住这一页」用于续读，「记录进度」可维护阅读状态、已读页数和总页数。文献记录、附件和摘录分别保存在 `Todo工作台/literature/`、`Todo工作台/literature-pdfs/` 和 `Todo工作台/literature-notes/`。
+- 在 EasySync 同步整个 `Todo工作台/`，两端均升级至 0.6.0 后即可共享排序、文献、进度和摘录。安卓可阅读已同步的 PDF 与译文。
 
 ## 0.4.2 · 白天、夜晚与风景图库
 
@@ -47,7 +50,7 @@
 
 安装包 `todo-dashboard-0.4.0.zip` 和全局主题 `congrong-theme-1.0.0.zip` 可从 GitHub Releases 下载。BRAT 用户可在插件设置中检查 Todo 工作台更新。
 
-Obsidian 插件，当前源码版本 0.5.0。一个插件提供首页仪表盘、待办日程、文献专区、灵感复盘和课程整理，支持 Windows 与安卓界面布局。任务、文献和排序数据存储于普通库文件夹，便于 EasySync 同步。
+Obsidian 插件，当前源码版本 0.6.0。一个插件提供首页仪表盘、待办日程、文献专区、灵感复盘和课程整理，支持 Windows 与安卓界面布局。任务、文献和排序数据存储于普通库文件夹，便于 EasySync 同步。
 
 ## 安装本地测试版
 

@@ -3,8 +3,19 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  normalizeLiteratureRecord, readingPercent, findLiteratureDuplicate, parseZoteroExport, applyJournalTagsCache
+  normalizeLiteratureRecord, readingPercent, findLiteratureDuplicate, parseZoteroExport, applyJournalTagsCache, literatureBibTeX
 } = require('../src/literature.cjs');
+
+test('keeps multiple collections and deduplicated tags without changing a stable citation key', () => {
+  const paper = normalizeLiteratureRecord({title:'Alpha & beta',authors:'Lee, Mei; Sun, Tao',publicationYear:2025,
+    publicationTitle:'Journal A',collections:'肝损伤；综述;肝损伤',tags:['临床','Review','review'],citationKey:'lee2025alpha'});
+  assert.deepEqual(paper.collections,['肝损伤','综述']);
+  assert.deepEqual(paper.tags,['临床','Review']);
+  assert.match(literatureBibTeX({...paper,id:'paper-12'}),/^@article\{lee2025alpha,/);
+  assert.match(literatureBibTeX({...paper,id:'paper-12'}),/author = \{Lee, Mei and Sun, Tao\}/);
+  assert.equal(literatureBibTeX({...paper,id:'paper-12',citationKey:''}).split('\n')[0],
+    literatureBibTeX({...paper,id:'paper-12',citationKey:'',title:'Corrected title'}).split('\n')[0]);
+});
 
 test('normalizes bibliography and safely accepts vault-relative paths', () => {
   const record = normalizeLiteratureRecord({

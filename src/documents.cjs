@@ -7,6 +7,14 @@ if p.lower().endswith('.pdf'):
  from pypdf.generic import ContentStream
  r=PdfReader(p)
  if r.is_encrypted and not r.decrypt(''): raise ValueError('encrypted PDF')
+ if len(sys.argv)>2:
+  selected=int(sys.argv[2])
+  if not 1<=selected<=len(r.pages):
+   print(json.dumps({'pages':len(r.pages),'outOfRange':True}))
+   sys.exit(0)
+  text=r.pages[selected-1].extract_text() or ''
+  print(json.dumps({'text':text,'pages':len(r.pages)},ensure_ascii=False))
+  sys.exit(0)
  if len(r.pages)>200: raise ValueError('PDF exceeds 200 pages; split first')
  chunks=[];ocr=[]
  for i,page in enumerate(r.pages):
@@ -34,5 +42,16 @@ class DocumentReader{
  async extractLocal(file,{signal}={}){const output=await execute(runtime().python,['-c',PYTHON,file],signal);try{return JSON.parse(output);}catch{throw Error('文档提取返回了无效结果');}}
  async renderLocal(file,pages,{signal}={}){const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),base=os.tmpdir(),dir=await fs.mkdtemp(path.join(base,'todo-course-pdf-'));try{const images=[];for(const page of pages){stopped(signal);const target=path.join(dir,'page-'+page);await execute(runtime().poppler,['-f',String(page),'-l',String(page),'-scale-to','1800','-png','-singlefile',file,target],signal);stopped(signal);const data=await fs.readFile(target+'.png');images.push({page,data:data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength)});}return images;}finally{if(path.dirname(dir)===base&&path.basename(dir).startsWith('todo-course-pdf-'))await fs.rm(dir,{recursive:true,force:true});}}
  async read(file,{signal}={}){stopped(signal);const r=await this.extract(file,{signal});stopped(signal);if(typeof r.text!=='string'||!Array.isArray(r.needsOcr)||r.needsOcr.some(n=>!Number.isInteger(n)||n<1||n>r.pages))throw Error('文档提取结构异常');if(r.needsOcr.length>12)throw Error('扫描或含图页面超过 12 页，请拆分后分次上传');const images=r.needsOcr.length?await this.render(file,r.needsOcr,{signal}):[];stopped(signal);if(!r.text.trim()&&!images.length)throw Error('文档无法提取正文，请导出文本或清晰图片');return{...r,images};}
+ async readPage(file,page,{signal}={}){
+  if(!/\.pdf$/i.test(file)||!Number.isSafeInteger(page)||page<1)throw Error('请选择有效的 PDF 页码');
+  const output=await execute(runtime().python,['-c',PYTHON,file,String(page)],signal);
+  const result=JSON.parse(output);
+  if(result.outOfRange)throw Error(`该 PDF 共 ${result.pages} 页，请检查页码`);
+  if(typeof result.text!=='string'||!Number.isSafeInteger(result.pages))throw Error('PDF 页面提取结果无效');
+  const text=result.text.trim();
+  const images=text.length<25?await this.render(file,[page],{signal}):[];
+  stopped(signal);
+  return {text,page,pages:result.pages,images};
+ }
 }
 module.exports={DocumentReader};

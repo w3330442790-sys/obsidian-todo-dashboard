@@ -10,17 +10,18 @@ const activePapers = plugin => [...plugin.store.literature.values()].filter(pape
 function renderLiterature(view, parent, ui) {
   const {el, button, heading, select, empty} = ui;
   const plugin = view.plugin;
-  const state = view.state.literature ??= {query:'', status:'', quartile:'', order:'recent', limit:50};
+  const state = view.state.literature ??= {query:'', status:'', quartile:'', collection:'', tag:'', order:'recent', limit:50};
   heading(parent, 'READING LIBRARY', '文献专区', '整理期刊指标、原文与阅读进度。', '📑');
   const actions = el(parent, 'div', 'td-toolbar');
   button(actions, '添加文献', () => plugin.editLiterature(), 'mod-cta', '＋');
+  button(actions, '导入 PDF', () => plugin.showLiteraturePdfImport(), '', '📄');
   button(actions, '导入 Zotero', () => plugin.importLiterature(), '', '📥');
 
   const filters = el(parent, 'div', 'td-toolbar td-lit-filters');
   const search = el(filters, 'input', 'td-input');
   search.type = 'search';
   search.value = state.query;
-  search.placeholder = '搜索标题、作者、期刊、DOI 或分区';
+  search.placeholder = '搜索标题、作者、期刊、DOI、分区或标签';
   search.setAttribute('aria-label', '搜索文献');
   const count = el(parent, 'p', 'td-muted');
   const list = el(parent, 'div', 'td-lit-list');
@@ -30,7 +31,14 @@ function renderLiterature(view, parent, ui) {
     show();
   }
   search.addEventListener('input', () => setFilter('query', search.value));
+  const optionsFor = (key,stateKey,label) => {
+    const values = [...new Set(activePapers(plugin).flatMap(paper=>paper[key]))].sort((a,b)=>a.localeCompare(b,'zh'));
+    if(!values.includes(state[stateKey])) state[stateKey]='';
+    return [['',label],...values.map(value=>[value,value])];
+  };
   for (const [key, label, options] of [
+    ['collection','分类筛选',optionsFor('collections','collection','全部分类')],
+    ['tag','标签筛选',optionsFor('tags','tag','全部标签')],
     ['status', '阅读状态筛选', [['','全部阅读状态'], ...Object.entries(STATUSES)]],
     ['quartile', 'JCR 分区筛选', [['','全部 JCR 分区'], ...QUARTILES.map(q => [q,q]), ['unknown','未记录分区']]],
     ['order', '文献排序', [['recent','最近更新'], ['impact','影响因子'], ['year','发表年份']]]
@@ -43,8 +51,11 @@ function renderLiterature(view, parent, ui) {
     const filtered = papers.filter(paper => {
       if (state.status && paper.status !== state.status) return false;
       if (state.quartile && (paper.metrics.jcrQuartile || 'unknown') !== state.quartile) return false;
+      if (state.collection && !paper.collections.includes(state.collection)) return false;
+      if (state.tag && !paper.tags.includes(state.tag)) return false;
       return [paper.title, paper.authors, paper.publicationTitle, paper.doi,
-        paper.metrics.jcrQuartile, paper.metrics.casMajor, paper.metrics.casMinor].some(value => value.toLowerCase().includes(query));
+        paper.metrics.jcrQuartile, paper.metrics.casMajor, paper.metrics.casMinor,
+        ...paper.collections,...paper.tags].some(value => value.toLowerCase().includes(query));
     });
     filtered.sort((a,b) => {
       if (state.order === 'impact') return (b.metrics.impactFactor ?? -1) - (a.metrics.impactFactor ?? -1);
@@ -79,6 +90,11 @@ function renderPaper(plugin, parent, paper, {el, button}) {
   if (!tags.childElementCount) el(tags, 'span', 'td-muted', '暂无期刊指标');
   else if (metrics.metricsYear || metrics.metricsSource) el(tags, 'small', 'td-muted',
     [metrics.metricsYear && `${metrics.metricsYear} 年指标`, metrics.metricsSource].filter(Boolean).join(' · '));
+  if(paper.collections.length||paper.tags.length){
+    const labels=el(card,'div','td-lit-tags');
+    for(const label of paper.collections)el(labels,'span','td-lit-tag','分类 · '+label);
+    for(const label of paper.tags)el(labels,'span','td-lit-tag','#'+label);
+  }
 
   const progress = el(card, 'div', 'td-lit-progress');
   const percent = L.readingPercent(paper);
@@ -91,17 +107,17 @@ function renderPaper(plugin, parent, paper, {el, button}) {
     bar.setAttribute('aria-label', '阅读进度');
   }
   const actions = el(card, 'div', 'td-lit-actions');
+  if(paper.pdfPath)button(actions,paper.currentPage>0?'继续阅读':'打开 PDF',()=>plugin.run(()=>plugin.openLiteraturePdf(paper)),'mod-cta');
+  else button(actions,'添加 PDF',()=>plugin.showLiteraturePdfImport(paper),'td-link');
+  button(actions,'阅读与翻译',()=>plugin.showLiteratureReader(paper));
   button(actions, '记录进度', () => plugin.readingProgress(paper));
   button(actions, '编辑文献', () => plugin.editLiterature(paper), 'td-link');
-  for (const [path, label] of [[paper.pdfPath,'打开 PDF'], [paper.notePath,'打开笔记']]) {
-    if (!path) continue;
-    button(actions, label, () => plugin.run(async () => {
-      const file = plugin.app.vault.getAbstractFileByPath(path);
-      if (!file?.extension) throw Error('库内文件未找到：'+path);
-      const page = file.extension.toLowerCase() === 'pdf' && paper.currentPage > 0 ? '#page='+paper.currentPage : '';
-      await plugin.app.workspace.openLinkText(path+page, '', true);
-    }), 'td-link');
-  }
+  button(actions,'复制引用',()=>plugin.showLiteratureCitation(paper),'td-link');
+  if(paper.notePath)button(actions,'打开笔记',()=>plugin.run(async()=>{
+    const file=plugin.app.vault.getAbstractFileByPath(paper.notePath);
+    if(!file?.extension)throw Error('库内笔记未找到：'+paper.notePath);
+    await plugin.app.workspace.openLinkText(file.path,'',true);
+  }),'td-link');
   const url = paper.url || (paper.doi ? 'https://doi.org/'+encodeURI(paper.doi) : '');
   if (url) {
     const link = el(actions, 'a', '', '查看原文');
@@ -139,8 +155,11 @@ function editLiterature(plugin, root, modal, paper, ui) {
   const fields = el(form, 'div', 'td-lit-form-grid');
   const inputs = Object.fromEntries([
     ['authors','作者'], ['publicationTitle','期刊'], ['publicationYear','发表年份'],
-    ['doi','DOI'], ['url','原文链接'], ['pdfPath','库内 PDF 路径'], ['notePath','库内笔记路径']
+    ['doi','DOI'], ['url','原文链接'], ['pdfPath','库内 PDF 路径'], ['notePath','库内笔记路径'],
+    ['citationKey','引用键（可选）']
   ].map(([key,label]) => [key,formField(fields,label,'text',paper?.[key])]));
+  inputs.collections=formField(fields,'文献分类（用分号分隔）','text',paper?.collections.join('；'));
+  inputs.tags=formField(fields,'主题标签（用分号分隔）','text',paper?.tags.join('；'));
   const metricFields = el(form, 'div', 'td-lit-form-grid');
   const metrics = paper?.metrics || {};
   const metricInputs = Object.fromEntries([

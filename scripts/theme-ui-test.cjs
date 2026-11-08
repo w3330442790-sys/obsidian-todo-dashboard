@@ -7,7 +7,8 @@ const {chromium} = require(process.env.PLAYWRIGHT_PATH || 'playwright');
 const root = path.resolve(__dirname, '..');
 const out = path.join(root, 'artifacts', 'day-night');
 const credits = require('../assets/scenery/credits.json');
-const origin = 'http://congrong-preview.invalid';
+const {pdfFixture}=require('../tests/fixtures/pdf-fixture.cjs');
+const origin = 'https://congrong-preview.invalid';
 const browserPath = process.env.BROWSER_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const headings = ['today', 'week', 'focus', 'recent', 'inspiration', 'reflection'];
 
@@ -128,7 +129,66 @@ async function checkLiterature(page) {
   await page.locator('.td-lit-paper').filter({hasText:'手工记录的文献'}).getByText('IF 1.9',{exact:true}).waitFor();
   assert.equal(await page.locator('.td-host').evaluate(el=>el.scrollWidth>el.clientWidth),false);
   await page.screenshot({path:path.join(out,`literature-${page.viewportSize().width}.png`),fullPage:true});
+  await checkPdfWorkflow(page);
   await page.getByRole('button',{name:'首页',exact:true}).click();
+}
+
+async function checkPdfWorkflow(page) {
+  const desktop = await page.evaluate(()=>p.assistant.desktop);
+  await page.getByRole('button',{name:'导入 PDF',exact:true}).click();
+  await page.getByLabel('PDF 文件',{exact:true}).setInputFiles({
+    name:'Fixture literature.pdf',mimeType:'application/pdf',
+    buffer:pdfFixture('First page text stays in the vault.','Second page text is selected for translation.')
+  });
+  await page.getByRole('button',{name:'确认导入 PDF',exact:true}).click();
+  await page.getByText('已导入 1 个 PDF · 已存在 0 个',{exact:true}).waitFor();
+  await page.locator('.td-modal').getByRole('button',{name:'关闭',exact:true}).click();
+  const paper=page.locator('.td-lit-paper').filter({hasText:'Fixture literature'});
+  await paper.getByRole('button',{name:'编辑文献',exact:true}).click();
+  await page.getByLabel('文献分类（用分号分隔）',{exact:true}).fill('肝损伤；综述');
+  await page.getByLabel('主题标签（用分号分隔）',{exact:true}).fill('临床；优先');
+  await page.getByLabel('引用键（可选）',{exact:true}).fill('fixturePdf');
+  await page.getByRole('button',{name:'保存',exact:true}).click();
+  await paper.getByText('分类 · 肝损伤',{exact:true}).waitFor();
+  await page.getByLabel('分类筛选',{exact:true}).selectOption('肝损伤');
+  await page.getByLabel('标签筛选',{exact:true}).selectOption('优先');
+  assert.equal(await page.locator('.td-lit-paper').count(),1);
+  await paper.getByRole('button',{name:'复制引用',exact:true}).click();
+  assert.match(await page.getByLabel('BibTeX',{exact:true}).inputValue(),/^@misc\{fixturePdf,/);
+  await page.locator('.td-modal').getByRole('button',{name:'关闭',exact:true}).click();
+
+  await page.evaluate(()=>{
+    p.readLiteraturePage=async(_paper,page)=>({text:'Second page text is selected for translation.',page,pages:2,images:[]});
+    p.generateLiteratureTranslation=async(prompt)=>{window.litPrompt=prompt;return '这是第二页的译文。';};
+  });
+  await paper.getByRole('button',{name:'阅读与翻译',exact:true}).click();
+  await page.getByLabel('PDF 页码',{exact:true}).fill('2');
+  if(desktop){
+    await page.getByRole('button',{name:'提取该页',exact:true}).click();
+    await page.getByText('已提取第 2 页，共 2 页。',{exact:true}).waitFor();
+    await page.getByRole('button',{name:'翻译',exact:true}).click();
+    await page.getByText('译文已生成，可编辑后保存。',{exact:true}).waitFor();
+    assert.match(await page.evaluate(()=>window.litPrompt),/Second page text/);
+    assert.doesNotMatch(await page.evaluate(()=>window.litPrompt),/First page/);
+  }else{
+    assert.equal(await page.getByRole('button',{name:'翻译',exact:true}).isEnabled(),false);
+    await page.getByLabel('原文选段',{exact:true}).fill('Second page');
+    await page.getByLabel('译文或笔记',{exact:true}).fill('这是第二页的译文。');
+  }
+  await page.screenshot({path:path.join(out,`pdf-reader-${page.viewportSize().width}.png`),fullPage:true});
+  await page.getByRole('button',{name:'记住这一页',exact:true}).click();
+  await page.getByText('已将第 2 页记为续读位置。',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'保存阅读摘录',exact:true}).click();
+  await page.getByText('阅读摘录已保存。',{exact:true}).waitFor();
+  const excerpt=await page.evaluate(async()=>{
+    const file=testApp.vault.getMarkdownFiles().find(file=>file.path.includes('/literature-notes/'));
+    return testApp.vault.read(file);
+  });
+  assert.match(excerpt,/\.pdf#page=2\|PDF · 第 2 页/);
+  assert.match(excerpt,/这是第二页的译文/);
+  await page.locator('.td-modal').getByRole('button',{name:'关闭',exact:true}).click();
+  await paper.getByRole('button',{name:'继续阅读',exact:true}).click();
+  assert.match(await page.evaluate(()=>window.openedNote),/\.pdf#page=2$/);
 }
 
 async function checkUpgrade(page) {
@@ -305,7 +365,7 @@ async function main() {
     assert.equal(await width('[data-widget=stats]'),await width('[data-widget=plans]'));
     await mobile.page.screenshot({path:path.join(out,'day-mobile.png'),fullPage:true});
     assert.deepEqual([...desktop.errors, ...tablet.errors, ...mobile.errors], []);
-    console.log('PASS desktop, tablet and phone layouts, theme and plan regressions, Zotero import, journal tags and reading progress');
+    console.log('PASS desktop and phone literature UI: Zotero, PDF import, collections, BibTeX, translation draft and reading excerpts');
   } finally {
     await browser.close();
   }

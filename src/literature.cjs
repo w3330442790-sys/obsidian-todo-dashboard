@@ -11,6 +11,23 @@ const folded = value => trimmed(value).normalize('NFKC').toLowerCase().replace(/
 const headerKey = value => folded(value).replace(/[\s_-]+/g, '');
 const missing = value => value == null || typeof value === 'string' && !value.trim();
 
+function labels(value) {
+  const values = Array.isArray(value) ? value : trimmed(value).split(/[;；、，\n]/);
+  const seen = new Set();
+  return values.map(trimmed).filter(label => {
+    const key = folded(label);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function citationKey(value) {
+  const key = trimmed(value);
+  if (key && !/^[a-z0-9][a-z0-9_.:-]*$/i.test(key)) throw Error('引用键只支持英文字母、数字和 . _ : -');
+  return key;
+}
+
 function numberField(value, pattern, minimum, message) {
   if (missing(value)) return null;
   const raw = scalar(value).normalize('NFKC');
@@ -97,6 +114,7 @@ function normalizeLiteratureRecord(input) {
     title, authors: trimmed(input.authors), publicationTitle: trimmed(input.publicationTitle),
     publicationYear: yearField(input.publicationYear, '发表年份必须为四位数'),
     doi: doiField(input.doi), url: urlField(input.url), zoteroKey: itemKey(input.zoteroKey),
+    collections: labels(input.collections), tags: labels(input.tags), citationKey: citationKey(input.citationKey),
     metrics, status, currentPage, totalPages,
     notePath: pathField(input.notePath, '.md', '笔记路径必须为仓库内的相对 Markdown 路径'),
     pdfPath: pathField(input.pdfPath, '.pdf', 'PDF 路径必须为仓库内的相对 PDF 路径')
@@ -107,6 +125,20 @@ function readingPercent(record) {
   if (record.status === 'finished') return 100;
   if (record.currentPage != null && record.totalPages > 0) return Math.round(record.currentPage * 100 / record.totalPages);
   return record.status === 'unread' && !record.currentPage ? 0 : null;
+}
+
+function literatureBibTeX(paper) {
+  const key = paper.citationKey || 'todo-' + paper.id.replace(/[^\w-]/g,'');
+  const type = paper.publicationTitle ? 'article' : 'misc';
+  const latex = {'\\':'\\textbackslash{}','{':'\\{','}':'\\}','^':'\\textasciicircum{}','~':'\\textasciitilde{}'};
+  const fields = [
+    ['title',paper.title], ['author',(paper.authors||'').split(/;\s*/).filter(Boolean).join(' and ')],
+    ['journal',paper.publicationTitle], ['year',paper.publicationYear], ['doi',paper.doi], ['url',paper.url]
+  ].filter(([,value]) => value).map(([field,value]) => {
+    const text = String(value).replace(/\s+/g,' ').replace(/[\\{}&%$#_^~]/g,char=>latex[char] || '\\'+char);
+    return `  ${field} = {${text}}`;
+  });
+  return `@${type}{${key},\n${fields.join(',\n')}\n}`;
 }
 
 function readOptional(reader, value) {
@@ -314,6 +346,12 @@ function zoteroEntry(row, childNotes) {
   const key = itemKey(row.key) || itemKey(field('key', 'zoterokey', 'uri')) || (/[:/]/.test(trimmed(item.id)) ? itemKey(item.id) : '');
   const notes = [field('extra'), field('note'), ...list(field('notes')), ...(childNotes.get(key) || [])];
   const tags = [...list(field('tags')), ...['manualtags', 'automatictags'].flatMap(key => trimmed(field(key)).split(/;[ \t]*/))];
+  const topicTags = tags.map(tag=>trimmed(tag?.tag ?? tag)).filter(tag=>{
+    const found={};
+    applyExtraMetrics(found,tag);
+    return !Object.keys(found).length;
+  });
+  const exportedKey = field('citationkey') || /(?:^|\n)Citation Key\s*:\s*(\S+)/i.exec(trimmed(field('extra')))?.[1];
   const issued = field('issued');
   return normalizeLiteratureRecord({
     title, authors: authorsFrom(field('author', 'authors', 'creators')),
@@ -321,6 +359,7 @@ function zoteroEntry(row, childNotes) {
     publicationYear: publicationYear(field('publicationyear'), issued?.['date-parts']?.[0]?.[0], field('date', 'publicationdate'), issued?.raw, issued?.literal),
     doi: readOptional(doiField, field('doi')), url: readOptional(urlField, field('url')),
     zoteroKey: key, totalPages: readOptional(value => pageField(value, 1, ''), field('numpages', 'numberofpages')),
+    citationKey: readOptional(citationKey,exportedKey), tags:topicTags,
     metrics: importMetrics(fields, notes, tags)
   });
 }
@@ -396,4 +435,4 @@ function applyJournalTagsCache(records, value) {
   return { records: updated, matched, enriched };
 }
 
-module.exports = { normalizeLiteratureRecord, readingPercent, findLiteratureDuplicate, parseZoteroExport, applyJournalTagsCache };
+module.exports = { normalizeLiteratureRecord, readingPercent, literatureBibTeX, findLiteratureDuplicate, parseZoteroExport, applyJournalTagsCache };
