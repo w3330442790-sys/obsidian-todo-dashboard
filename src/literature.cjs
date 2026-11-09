@@ -4,6 +4,11 @@ const {normalizeSnapshot} = require('./easyscholar.cjs');
 const statuses = new Set(['unread', 'reading', 'finished']);
 const metricFields = ['impactFactor', 'jcrQuartile', 'casMajor', 'casMinor'];
 const cacheSource = 'EasyScholar / Zotero Journal Tags';
+const bibliographyFields = {
+  itemType:'条目类型',volume:'卷次',issue:'期号',pages:'页码',publisher:'出版社',place:'地点',
+  journalAbbreviation:'刊名缩写',issn:'ISSN',isbn:'ISBN',language:'语言',edition:'版次',
+  series:'系列',seriesTitle:'系列标题',rights:'版权',abstractNote:'摘要',extra:'附加信息'
+};
 
 const isObject = value => !!value && typeof value === 'object' && !Array.isArray(value);
 const trimmed = value => typeof value === 'string' ? value.trim() : '';
@@ -39,6 +44,20 @@ function numberField(value, pattern, minimum, message) {
 
 function yearField(value, message) {
   return numberField(value, /^\d{4}$/, 1000, message);
+}
+
+function publicationDateField(value) {
+  if (missing(value)) return '';
+  const raw = scalar(value).normalize('NFKC').replace(/\//g,'-');
+  const match = /^([1-9]\d{3})(?:-(\d{1,2})(?:-(\d{1,2}))?)?$/.exec(raw);
+  if (!match) throw Error('发表日期请用 YYYY、YYYY-MM 或 YYYY-MM-DD。');
+  const [,year,month,day] = match;
+  const numericMonth = Number(month || 1);
+  if (numericMonth < 1 || numericMonth > 12 ||
+      day && (Number(day) < 1 || Number(day) > new Date(Date.UTC(Number(year),numericMonth,0)).getUTCDate())) {
+    throw Error('发表日期不合法。');
+  }
+  return [year,month?.padStart(2,'0'),day?.padStart(2,'0')].filter(Boolean).join('-');
 }
 
 function pageField(value, minimum, message) {
@@ -112,10 +131,15 @@ function normalizeLiteratureRecord(input) {
   if (Object.keys(fieldSources).length) metrics.fieldSources = fieldSources;
 
   const publicationTitle = trimmed(input.publicationTitle);
+  const publicationDate = publicationDateField(input.publicationDate);
+  const legacyYear = yearField(input.publicationYear, '发表年份必须为四位数');
+  const bibliography = Object.fromEntries(Object.keys(bibliographyFields)
+    .map(key => [key,scalar(input.bibliography?.[key])]).filter(([,value]) => value));
   return {
     title, authors: trimmed(input.authors), publicationTitle,
     ...(Object.hasOwn(input,'easyScholar') ? {easyScholar:normalizeSnapshot(input.easyScholar,publicationTitle)} : {}),
-    publicationYear: yearField(input.publicationYear, '发表年份必须为四位数'),
+    publicationDate, publicationYear: publicationDate ? Number(publicationDate.slice(0,4)) : legacyYear,
+    bibliography, rating: numberField(input.rating, /^[0-5]$/, 0, '评分必须是 0–5 的整数'), memo:trimmed(input.memo),
     doi: doiField(input.doi), url: urlField(input.url), zoteroKey: itemKey(input.zoteroKey),
     collections: labels(input.collections), tags: labels(input.tags), citationKey: citationKey(input.citationKey),
     metrics, status, currentPage, totalPages,
@@ -347,6 +371,13 @@ function publicationYear(...values) {
   return null;
 }
 
+function importedDate(issued,date,parsedDate) {
+  const parts = issued?.['date-parts']?.[0];
+  const structured = Array.isArray(parts) ? parts.slice(0,3).join('-') : '';
+  return [structured,trimmed(parsedDate).replace(/(?:-00)+$/,''),date,issued?.raw,issued?.literal]
+    .map(value => readOptional(publicationDateField,value)).find(Boolean) || '';
+}
+
 function authorsFrom(value) {
   if (!Array.isArray(value)) return trimmed(value);
   return value.filter(author => !author?.creatorType || author.creatorType === 'author').map(author => {
@@ -360,7 +391,7 @@ function zoteroEntry(row, childNotes) {
   const item = isObject(row.data) ? row.data : row;
   const fields = new Map(Object.entries(item).map(([key, value]) => [headerKey(key), value]));
   const field = (...keys) => keys.map(key => fields.get(key)).find(value => !missing(value));
-  const title = trimmed(field('title'));
+  const title = trimmed(field('title','casename','nameofact','subject'));
   if (!title || ['note', 'attachment', 'annotation'].includes(field('itemtype')) || item.deleted) return null;
   const key = itemKey(row.key) || itemKey(field('key', 'zoterokey', 'uri')) || (/[:/]/.test(trimmed(item.id)) ? itemKey(item.id) : '');
   const notes = [field('extra'), field('note'), ...list(field('notes')), ...(childNotes.get(key) || [])];
@@ -372,15 +403,45 @@ function zoteroEntry(row, childNotes) {
   });
   const exportedKey = field('citationkey') || /(?:^|\n)Citation Key\s*:\s*(\S+)/i.exec(trimmed(field('extra')))?.[1];
   const issued = field('issued');
+  const date = field('date', 'publicationdate');
+  const bibliography = {
+    itemType:field('itemtype','type'),
+    volume:field('volume'), issue:field('issue'), pages:field('pages','page'),
+    publisher:field('publisher'), place:field('place','publisherplace'),
+    journalAbbreviation:field('journalabbreviation','journalabbr','containertitleshort','shortcontainertitle'),
+    issn:field('issn'), isbn:field('isbn'), language:field('language'), edition:field('edition'),
+    series:field('series'), seriesTitle:field('seriestitle','collectiontitle'), rights:field('rights'),
+    abstractNote:noteText(field('abstractnote','abstract')), extra:field('extra')
+  };
   return normalizeLiteratureRecord({
     title, authors: authorsFrom(field('author', 'authors', 'creators')),
-    publicationTitle: field('publicationtitle', 'containertitle', 'conferencename'),
-    publicationYear: publicationYear(field('publicationyear'), issued?.['date-parts']?.[0]?.[0], field('date', 'publicationdate'), issued?.raw, issued?.literal),
+    publicationTitle: field('publicationtitle', 'containertitle', 'conferencename','booktitle','proceedingstitle'),
+    publicationDate:importedDate(issued,date,row.meta?.parsedDate),
+    publicationYear: publicationYear(field('publicationyear'), issued?.['date-parts']?.[0]?.[0], date, issued?.raw, issued?.literal),
+    bibliography,
     doi: readOptional(doiField, field('doi')), url: readOptional(urlField, field('url')),
     zoteroKey: key, totalPages: readOptional(value => pageField(value, 1, ''), field('numpages', 'numberofpages')),
-    citationKey: readOptional(citationKey,exportedKey), tags:topicTags,
+    citationKey: readOptional(citationKey,exportedKey), tags:topicTags,collections:field('collectionnames'),
     metrics: importMetrics(fields, notes, tags)
   });
+}
+
+function missingBibliography(original,incoming) {
+  const sameKey = original.zoteroKey && original.zoteroKey === incoming.zoteroKey;
+  const sameDoi = original.doi && original.doi === incoming.doi;
+  if ((!sameKey && !sameDoi) || original.doi && incoming.doi && !sameDoi) return null;
+  const patch = {};
+  const existingDate = original.publicationDate || String(original.publicationYear || '');
+  if (incoming.publicationDate?.length > existingDate.length && incoming.publicationDate.startsWith(existingDate)) {
+    patch.publicationDate = incoming.publicationDate;
+  } else if (!existingDate && incoming.publicationYear) patch.publicationYear = incoming.publicationYear;
+  for (const key of ['publicationTitle','authors','doi','url','zoteroKey']) {
+    if (!original[key] && incoming[key]) patch[key] = incoming[key];
+  }
+  if (!original.collections?.length && incoming.collections?.length) patch.collections = incoming.collections;
+  const added = Object.entries(incoming.bibliography || {}).filter(([key,value]) => value && !original.bibliography?.[key]);
+  if (added.length) patch.bibliography = {...original.bibliography,...Object.fromEntries(added)};
+  return Object.keys(patch).length ? patch : null;
 }
 
 function parseZoteroExport(value, format) {
@@ -454,4 +515,4 @@ function applyJournalTagsCache(records, value) {
   return { records: updated, matched, enriched };
 }
 
-module.exports = { normalizeLiteratureRecord, effectiveLiteratureMetrics, readingPercent, literatureBibTeX, findLiteratureDuplicate, parseZoteroExport, applyJournalTagsCache };
+module.exports = { normalizeLiteratureRecord, effectiveLiteratureMetrics, readingPercent, literatureBibTeX, findLiteratureDuplicate, parseZoteroExport, applyJournalTagsCache, bibliographyFields, missingBibliography };

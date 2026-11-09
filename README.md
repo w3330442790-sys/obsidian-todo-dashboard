@@ -6,7 +6,9 @@
 
 ## 文献专区
 
-- 在顶栏进入「文献专区」。可以添加文献，或在 Zotero 导出 CSV 后用「导入 Zotero」预览并导入；也支持 CSL JSON 和 Zotero API JSON。重复条目会跳过。
+- 进入「文献专区」后，左栏筛选分类、标签和分区，中栏按列排序和搜索，右栏随条目选择展示作者、书目信息、附件和阅读状态。点击标题或使用方向键切换条目，双击有 PDF 的条目可打开原生阅读器。
+- 桌面端首次使用时，在 Zotero 的「设置 → 高级」启用允许本机其他应用与 Zotero 通信。之后保持 Zotero 打开，点「从 Zotero 刷新」即可读取个人库的条目与分类，新增条目并补全缺项。 [Zotero 本机 API](https://www.zotero.org/support/dev/web_api/v3/local_api)
+- 「导入 Zotero」可预览 CSV、CSL JSON 或 Zotero API JSON。日期保留来源精度。相同 Zotero Key 或 DOI 的条目可补全缺项，已有字段优先。本机刷新和文件导入均不会恢复已移出专区的条目。
 - 通过「导入 PDF」批量添加文件，或在已有条目中点击「添加 PDF」。附件保存在 `Todo工作台/literature-pdfs/`。同内容的附件复用；文件名用作初始标题。点击「打开 PDF」或「继续阅读」在 Obsidian 阅读器中打开文献。
 - 期刊标签显示 IF、JCR 分区和中科院大类、小类分区，可记录指标年份和来源。导出文件带有指标时可识别；如果使用 Zotero Journal Tags，也可选择 `journal-tags-cache.json`，按期刊名补充缺失指标。其余指标可手工填写。 [Zotero 导出说明](https://www.zotero.org/support/kb/exporting) · [Journal Tags 缓存说明](https://github.com/chen7447/journal-tags#使用)
 - 在「文献专区 → EasyScholar」粘贴并保存 Secret Key，即可按期刊或会议名称查等级。文献卡片的「查分区 → 查询并保存」会保存官方与自定义数据集结果。批量查询按名称合并请求，处理已填写来源、尚无查询记录的文献。未匹配的名称可修改后重新查询。 [EasyScholar 开放接口](https://www.easyscholar.cc/console/user/open)
@@ -183,7 +185,7 @@ Windows 通过本机 `xftj-transcribe` 工具接入：默认查找 `~/.codex/ski
 w3330442790-sys/obsidian-todo-dashboard
 ```
 
-选择最新版本，或指定 `0.6.1`，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。已有安装可在 BRAT 中检查更新。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
+选择最新版本，或指定 `0.7.0`，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。已有安装可在 BRAT 中检查更新。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
 
 维护者发布新版本的步骤：
 

@@ -2,137 +2,121 @@
 
 const {uid} = require('./core.cjs');
 const L = require('./literature.cjs');
+const Library = require('./literature-library.cjs');
+const {prepareLiteratureImport} = require('./zotero-local.cjs');
 const {consoleUrl, rankEntries, refreshRanks, savePaperRank} = require('./easyscholar.cjs');
 
 const STATUSES = {unread:'待读', reading:'阅读中', finished:'已读'};
 const QUARTILES = ['Q1', 'Q2', 'Q3', 'Q4'];
 const activePapers = plugin => [...plugin.store.literature.values()].filter(paper => !paper.deleted);
 
-function renderLiterature(view, parent, ui) {
-  const {el, button, heading, select, empty} = ui;
-  const plugin = view.plugin;
-  const state = view.state.literature ??= {query:'', status:'', quartile:'', collection:'', tag:'', order:'recent', limit:50};
-  heading(parent, 'READING LIBRARY', '文献专区', '整理期刊指标、原文与阅读进度。', '📑');
-  const actions = el(parent, 'div', 'td-toolbar');
-  button(actions, '添加文献', () => plugin.editLiterature(), 'mod-cta', '＋');
-  button(actions, '导入 PDF', () => plugin.showLiteraturePdfImport(), '', '📄');
-  button(actions, '导入 Zotero', () => plugin.importLiterature(), '', '📥');
-  button(actions, 'EasyScholar', () => plugin.showEasyScholar());
+const itemTypes = {
+  journalArticle:'期刊文章','article-journal':'期刊文章',conferencePaper:'会议论文','paper-conference':'会议论文',
+  book:'图书',bookSection:'书籍章节',chapter:'书籍章节',thesis:'学位论文',report:'报告',preprint:'预印本',
+  webpage:'网页','article-magazine':'杂志文章',magazineArticle:'杂志文章',
+  'article-newspaper':'报纸文章',newspaperArticle:'报纸文章',patent:'专利',dataset:'数据集',standard:'标准'
+};
 
-  const filters = el(parent, 'div', 'td-toolbar td-lit-filters');
-  const search = el(filters, 'input', 'td-input');
-  search.type = 'search';
-  search.value = state.query;
-  search.placeholder = '搜索标题、作者、期刊、DOI、分区或标签';
-  search.setAttribute('aria-label', '搜索文献');
-  const count = el(parent, 'p', 'td-muted');
-  const list = el(parent, 'div', 'td-lit-list');
-  function setFilter(key, value) {
-    state[key] = value;
-    state.limit = 50;
-    show();
-  }
-  search.addEventListener('input', () => setFilter('query', search.value));
-  const optionsFor = (key,stateKey,label) => {
-    const values = [...new Set(activePapers(plugin).flatMap(paper=>paper[key]))].sort((a,b)=>a.localeCompare(b,'zh'));
-    if(!values.includes(state[stateKey])) state[stateKey]='';
-    return [['',label],...values.map(value=>[value,value])];
-  };
-  for (const [key, label, options] of [
-    ['collection','分类筛选',optionsFor('collections','collection','全部分类')],
-    ['tag','标签筛选',optionsFor('tags','tag','全部标签')],
-    ['status', '阅读状态筛选', [['','全部阅读状态'], ...Object.entries(STATUSES)]],
-    ['quartile', 'JCR 分区筛选', [['','全部 JCR 分区'], ...QUARTILES.map(q => [q,q]), ['unknown','未记录分区']]],
-    ['order', '文献排序', [['recent','最近更新'], ['impact','影响因子'], ['year','发表年份']]]
-  ]) select(filters, options, state[key], value => setFilter(key, value)).setAttribute('aria-label', label);
-
-  function show() {
-    list.replaceChildren();
-    const papers = activePapers(plugin);
-    const query = state.query.trim().toLowerCase();
-    const filtered = papers.map(paper => ({paper,metrics:L.effectiveLiteratureMetrics(paper)})).filter(({paper,metrics}) => {
-      if (state.status && paper.status !== state.status) return false;
-      if (state.quartile && (metrics.jcrQuartile || 'unknown') !== state.quartile) return false;
-      if (state.collection && !paper.collections.includes(state.collection)) return false;
-      if (state.tag && !paper.tags.includes(state.tag)) return false;
-      return [paper.title, paper.authors, paper.publicationTitle, paper.doi,
-        metrics.jcrQuartile, metrics.casMajor, metrics.casMinor,
-        ...(query && paper.easyScholar ? rankEntries(paper.easyScholar).map(({label,value}) => label+' '+value) : []),
-        ...paper.collections,...paper.tags].some(value => value.toLowerCase().includes(query));
-    });
-    filtered.sort((a,b) => {
-      if (state.order === 'impact') return (b.metrics.impactFactor ?? -1) - (a.metrics.impactFactor ?? -1);
-      if (state.order === 'year') return (b.paper.publicationYear ?? 0) - (a.paper.publicationYear ?? 0);
-      return (b.paper.updatedAt || '').localeCompare(a.paper.updatedAt || '');
-    });
-    count.textContent = `符合筛选 ${filtered.length} 条 · 共 ${papers.length} 条`;
-    if (!filtered.length) empty(list, papers.length ? '没有符合筛选条件的文献。' : '添加一篇文献，或导入 Zotero 导出文件。');
-    for (const {paper,metrics} of filtered.slice(0,state.limit)) renderPaper(plugin,list,paper,metrics,ui);
-    if (filtered.length > state.limit) button(list, '显示更多', () => { state.limit += 50; show(); });
-  }
-  show();
+function renderLiterature(view,parent,ui) {
+  Library.renderLibrary(view,parent,ui,renderPaperDetails);
 }
 
-function renderPaper(plugin, parent, paper, metrics, {el, button}) {
-  const card = el(parent, 'article', 'td-panel td-lit-paper');
-  el(card, 'h3', '', paper.title);
-  el(card, 'p', 'td-muted', [paper.authors, paper.publicationTitle, paper.publicationYear].filter(Boolean).join(' · '));
-  const tags = el(card, 'div', 'td-lit-tags');
-  let hasOnlineMetrics = false;
-  for (const [key, label] of [
-    ['impactFactor', metrics.impactFactor == null ? '' : `IF ${metrics.impactFactor}`],
-    ['jcrQuartile', metrics.jcrQuartile ? `JCR ${metrics.jcrQuartile}` : ''],
-    ['casMajor', metrics.casMajor ? `中科院大类 ${metrics.casMajor}` : ''],
-    ['casMinor', metrics.casMinor ? `中科院小类 ${metrics.casMinor}` : '']
-  ]) {
-    if (!label) continue;
-    const badge = el(tags, 'span', 'td-lit-tag', label);
-    badge.dataset.metric = key === 'jcrQuartile' ? metrics.jcrQuartile : key;
-    const online = paper.easyScholar && (paper.metrics[key] == null || paper.metrics[key] === '');
-    hasOnlineMetrics ||= Boolean(online);
-    badge.title = online ? 'EasyScholar · 查询于 ' + queryDate(paper.easyScholar) :
-      (metrics.fieldSources?.[key] || [metrics.metricsYear, metrics.metricsSource].filter(Boolean).join(' · '));
+function renderPaperDetails(plugin,parent,paper,metrics,{el,button}) {
+  const title = el(parent,'header','td-lit-detail-header');
+  el(title,'h3','',paper.title);
+  const actions = el(title,'div','td-lit-actions');
+  if (paper.pdfPath) button(actions,paper.currentPage>0?'继续阅读':'打开 PDF',
+    ()=>plugin.run(()=>plugin.openLiteraturePdf(paper)),'mod-cta');
+  button(actions,'编辑文献',()=>plugin.editLiterature(paper));
+  button(actions,'复制引用',()=>plugin.showLiteratureCitation(paper),'td-link');
+  button(actions,'查分区',()=>plugin.showEasyScholar(paper.id),'td-link');
+  const shortcuts = el(parent,'nav','td-lit-detail-shortcuts');
+  shortcuts.setAttribute('aria-label','条目详情分区');
+
+  function section(name,open = false) {
+    const block = el(parent,'details','td-lit-detail-section');
+    block.open = open;
+    el(block,'summary','',name);
+    button(shortcuts,name,() => {
+      block.open = true;
+      block.scrollIntoView({block:'nearest'});
+      block.querySelector('summary')?.focus({preventScroll:true});
+    },'td-link');
+    return el(block,'div','td-lit-detail-body');
   }
-  if (!tags.childElementCount) el(tags, 'span', 'td-muted', '暂无期刊指标');
-  else if (!hasOnlineMetrics && (metrics.metricsYear || metrics.metricsSource)) el(tags, 'small', 'td-muted',
-    [metrics.metricsYear && `${metrics.metricsYear} 年指标`, metrics.metricsSource].filter(Boolean).join(' · '));
-  if (paper.easyScholar) renderRankDetails(card,paper.easyScholar,el);
-  if(paper.collections.length||paper.tags.length){
-    const labels=el(card,'div','td-lit-tags');
-    for(const label of paper.collections)el(labels,'span','td-lit-tag','分类 · '+label);
-    for(const label of paper.tags)el(labels,'span','td-lit-tag','#'+label);
+  function field(list,label,value) {
+    if (!value) return;
+    el(list,'dt','',label);
+    el(list,'dd','',value);
   }
 
-  const progress = el(card, 'div', 'td-lit-progress');
-  const percent = L.readingPercent(paper);
-  const pages = paper.currentPage == null ? '' : paper.totalPages == null ? `第 ${paper.currentPage} 页` : `${paper.currentPage} / ${paper.totalPages} 页`;
-  el(progress, 'span', '', [STATUSES[paper.status], pages, percent == null ? '' : `${percent}%`].filter(Boolean).join(' · '));
-  if (percent != null) {
-    const bar = el(progress, 'progress', '');
-    bar.max = 100;
-    bar.value = percent;
-    bar.setAttribute('aria-label', '阅读进度');
+  const metadata = paper.bibliography || {};
+  const info = section('信息',true);
+  const fields = el(info,'dl','td-lit-fields');
+  field(fields,'评分',paper.rating == null ? '未评分' : '★'.repeat(paper.rating)+'☆'.repeat(5-paper.rating)+' '+paper.rating+'/5');
+  field(fields,'笔记',paper.memo || '—');
+  field(fields,'条目类型',itemTypes[metadata.itemType] || metadata.itemType);
+  field(fields,'标题',paper.title);
+  const authors = Library.authors(paper);
+  for (const name of authors.slice(0,5)) field(fields,'作者',name);
+  if (authors.length > 5) {
+    el(fields,'dt','','作者');
+    const extra = el(fields,'dd','td-lit-more-authors');
+    const toggle = button(extra,`显示其余 ${authors.length-5} 位作者`,() => {
+      names.hidden = !names.hidden;
+      toggle.textContent = names.hidden ? `显示其余 ${authors.length-5} 位作者` : '收起作者';
+      toggle.setAttribute('aria-expanded',String(!names.hidden));
+    },'td-link');
+    toggle.setAttribute('aria-expanded','false');
+    const names = el(extra,'ul','td-lit-author-list');
+    names.hidden = true;
+    for (const name of authors.slice(5)) el(names,'li','',name);
   }
-  const actions = el(card, 'div', 'td-lit-actions');
-  if(paper.pdfPath)button(actions,paper.currentPage>0?'继续阅读':'打开 PDF',()=>plugin.run(()=>plugin.openLiteraturePdf(paper)),'mod-cta');
-  else button(actions,'添加 PDF',()=>plugin.showLiteraturePdfImport(paper),'td-link');
-  button(actions,'阅读与翻译',()=>plugin.showLiteratureReader(paper));
-  button(actions, '记录进度', () => plugin.readingProgress(paper));
-  button(actions, '编辑文献', () => plugin.editLiterature(paper), 'td-link');
-  button(actions, '查分区', () => plugin.showEasyScholar(paper.id), 'td-link');
-  button(actions,'复制引用',()=>plugin.showLiteratureCitation(paper),'td-link');
-  if(paper.notePath)button(actions,'打开笔记',()=>plugin.run(async()=>{
-    const file=plugin.app.vault.getAbstractFileByPath(paper.notePath);
-    if(!file?.extension)throw Error('库内笔记未找到：'+paper.notePath);
-    await plugin.app.workspace.openLinkText(file.path,'',true);
-  }),'td-link');
-  const url = paper.url || (paper.doi ? 'https://doi.org/'+encodeURI(paper.doi) : '');
+  field(fields,'出版物',paper.publicationTitle);
+  const badges = el(info,'div','td-lit-tags td-lit-detail-badges');
+  Library.metricBadges(badges,paper,metrics,el);
+  field(fields,'日期',Library.date(paper));
+  for (const [key,label] of Object.entries(L.bibliographyFields)) {
+    if (!['itemType','abstractNote','extra'].includes(key)) field(fields,label,metadata[key]);
+  }
+  field(fields,'DOI',paper.doi);
+  field(fields,'网址',paper.url);
+  field(fields,'引用键',paper.citationKey);
+  field(fields,'Zotero Key',paper.zoteroKey);
+  const url = paper.url || (paper.doi ? 'https://doi.org/'+paper.doi.split('/').map(encodeURIComponent).join('/') : '');
   if (url) {
-    const link = el(actions, 'a', '', '查看原文');
+    const link = el(info,'a','td-lit-original','查看原文 ↗');
     link.href = url;
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
   }
+
+  if (metadata.abstractNote) el(section('摘要'),'p','td-lit-prose',metadata.abstractNote);
+  if (metadata.extra) el(section('附加信息'),'p','td-lit-prose',metadata.extra);
+  const attachments = section('附件与阅读',true);
+  const progress = el(attachments,'div','td-lit-progress');
+  const percent = L.readingPercent(paper);
+  const pages = paper.currentPage == null ? '' : paper.totalPages == null ? `第 ${paper.currentPage} 页` : `${paper.currentPage} / ${paper.totalPages} 页`;
+  el(progress,'span','',[STATUSES[paper.status],pages,percent == null ? '' : `${percent}%`].filter(Boolean).join(' · '));
+  if (percent != null) {
+    const bar = el(progress,'progress','');
+    bar.max = 100;
+    bar.value = percent;
+    bar.setAttribute('aria-label','阅读进度');
+  }
+  const reading = el(attachments,'div','td-lit-actions');
+  if (paper.pdfPath) el(attachments,'small','td-muted',paper.pdfPath.split('/').pop()).title = paper.pdfPath;
+  else button(reading,'添加 PDF',()=>plugin.showLiteraturePdfImport(paper));
+  button(reading,'阅读与翻译',()=>plugin.showLiteratureReader(paper));
+  button(reading,'记录进度',()=>plugin.readingProgress(paper));
+  if (paper.notePath) button(reading,'打开笔记',()=>Library.openNote(plugin,paper),'td-link').title = paper.notePath;
+
+  if (paper.collections.length || paper.tags.length) {
+    const labels = el(section('分类与标签',true),'div','td-lit-tags');
+    for (const label of paper.collections) el(labels,'span','td-lit-tag','分类 · '+label);
+    for (const label of paper.tags) el(labels,'span','td-lit-tag','#'+label);
+  }
+  if (paper.easyScholar) renderRankDetails(section('期刊等级'),paper.easyScholar,el,true);
 }
 
 const queryDate = snapshot => new Date(snapshot.checkedAt).toLocaleDateString('zh-CN');
@@ -321,12 +305,22 @@ function editLiterature(plugin, root, modal, paper, ui) {
   title.required = true;
   const fields = el(form, 'div', 'td-lit-form-grid');
   const inputs = Object.fromEntries([
-    ['authors','作者'], ['publicationTitle','期刊或会议'], ['publicationYear','发表年份'],
+    ['authors','作者（用分号分隔）'], ['publicationTitle','出版物（期刊、会议或书名）'],
     ['doi','DOI'], ['url','原文链接'], ['pdfPath','库内 PDF 路径'], ['notePath','库内笔记路径'],
     ['citationKey','引用键（可选）']
   ].map(([key,label]) => [key,formField(fields,label,'text',paper?.[key])]));
+  inputs.publicationDate = formField(fields,'发表日期（年、年-月或年-月-日）','text',Library.date(paper || {}));
   inputs.collections=formField(fields,'文献分类（用分号分隔）','text',paper?.collections.join('；'));
   inputs.tags=formField(fields,'主题标签（用分号分隔）','text',paper?.tags.join('；'));
+  inputs.rating = formSelect(fields,'评分',[['','未评分'],...[0,1,2,3,4,5].map(n=>[String(n),n+'/5'])],
+    paper?.rating == null ? '' : String(paper.rating));
+  inputs.memo = formField(form,'个人笔记','textarea',paper?.memo);
+  inputs.memo.rows = 3;
+  const metadata = el(form,'details','td-lit-detail-section');
+  el(metadata,'summary','','书目信息');
+  const metadataGrid = el(metadata,'div','td-lit-form-grid');
+  const bibliography = Object.fromEntries(Object.entries(L.bibliographyFields).map(([key,label]) =>
+    [key,formField(metadataGrid,label,['abstractNote','extra'].includes(key) ? 'textarea' : 'text',paper?.bibliography?.[key])]));
   const metricFields = el(form, 'div', 'td-lit-form-grid');
   const metrics = paper?.metrics || {};
   const metricInputs = Object.fromEntries([
@@ -341,7 +335,8 @@ function editLiterature(plugin, root, modal, paper, ui) {
     for (const key of Object.keys(sources)) {
       if (String(metrics[key] ?? '') !== entered[key]) delete sources[key];
     }
-    await savePaper(plugin,paper,{title:title.value,...values(inputs),metrics:{...entered,fieldSources:sources}},token);
+    await savePaper(plugin,paper,{title:title.value,...values(inputs),publicationYear:null,
+      bibliography:values(bibliography),metrics:{...entered,fieldSources:sources}},token);
     plugin.refresh();
   },ui);
   if (paper) {
@@ -385,8 +380,33 @@ async function savePaper(plugin, original, patch, token) {
   const normalized = L.normalizeLiteratureRecord({...original,...patch});
   const now = new Date().toISOString();
   await plugin.store.saveLiterature({
-    ...normalized, id:original?.id || uid(), createdAt:original?.createdAt || now, updatedAt:now
+    ...original,...normalized, id:original?.id || uid(), createdAt:original?.createdAt || now, updatedAt:now
   },token);
+}
+
+async function refreshLocalZotero(plugin,notify) {
+  if (plugin.literatureImporting) throw Error('文献导入正在进行，请等待完成。');
+  plugin.literatureImporting = true;
+  try {
+    notify('正在读取本机 Zotero 文献库…');
+    const parsed = await plugin.zoteroLocal.read();
+    const prepared = prepareLiteratureImport(parsed.records,plugin.store.literature.values(),id=>plugin.store.token('literature',id));
+    let added = 0, enriched = 0, failed = 0;
+    for (const {original,patch,token} of prepared.changes) {
+      if (!original && L.findLiteratureDuplicate(plugin.store.literature.values(),patch)) continue;
+      try {
+        await savePaper(plugin,original,patch,token);
+        if (original) enriched++;
+        else added++;
+      } catch {
+        failed++;
+      }
+    }
+    notify(`Zotero 已读取 ${parsed.records.length} 条 · 新增 ${added} · 补全 ${enriched} · 跳过 ${parsed.skipped} · 失败 ${failed}`);
+  } finally {
+    plugin.literatureImporting = false;
+    plugin.refresh();
+  }
 }
 
 function importLiterature(plugin, root, modal, {el,button,formField}) {
@@ -413,23 +433,19 @@ function importLiterature(plugin, root, modal, {el,button,formField}) {
       const zoteroFile = source.files[0], cacheFile = cache.files[0];
       if (!zoteroFile && !cacheFile) throw Error('请选择 Zotero 导出文件或 Journal Tags 缓存');
       for (const file of [zoteroFile,cacheFile]) if (file?.size > 20*1024*1024) throw Error('单个文件请小于 20 MB');
-      const current = activePapers(plugin);
+      const cacheText = cacheFile ? await cacheFile.text() : '';
       if (zoteroFile) {
         const format = zoteroFile.name.toLowerCase().split('.').pop();
         const parsed = L.parseZoteroExport(await zoteroFile.text(),format);
-        const matched = cacheFile ? L.applyJournalTagsCache(parsed.records,await cacheFile.text()) : null;
-        const known = [...current];
-        const records = [];
-        for (const paper of matched?.records || parsed.records) {
-          if (L.findLiteratureDuplicate(known,paper)) continue;
-          known.push(paper);
-          records.push({patch:paper});
-        }
-        prepared = records;
-        status.textContent = `新增 ${records.length} 条 · 重复 ${parsed.records.length-records.length} 条 · 跳过 ${parsed.skipped} 条`+
+        const matched = cacheFile ? L.applyJournalTagsCache(parsed.records,cacheText) : null;
+        const plan = prepareLiteratureImport(matched?.records || parsed.records,plugin.store.literature.values(),
+          id=>plugin.store.token('literature',id));
+        prepared = plan.changes;
+        status.textContent = `新增 ${plan.added} 条 · 补全已有 ${plan.enriched} 条 · 其余重复 ${plan.repeated} 条 · 跳过 ${parsed.skipped} 条`+
           (matched ? ` · 缓存补充 ${matched.enriched} 条` : '');
       } else {
-        const matched = L.applyJournalTagsCache(current,await cacheFile.text());
+        const current = activePapers(plugin);
+        const matched = L.applyJournalTagsCache(current,cacheText);
         prepared = matched.records.flatMap((paper,index) => {
           const original = current[index];
           return JSON.stringify(paper.metrics) === JSON.stringify(original.metrics) ? [] :
@@ -437,25 +453,28 @@ function importLiterature(plugin, root, modal, {el,button,formField}) {
         });
         status.textContent = `缓存匹配 ${matched.matched} 条 · 可补充指标 ${prepared.length} 条`;
       }
-      for (const {original,patch} of prepared.slice(0,8)) el(result,'div','',patch.title || original.title);
+      for (const {original,patch} of prepared.slice(0,8)) el(result,'div','',(original ? '补全 · ' : '新增 · ')+(patch.title || original.title));
       apply.disabled = !prepared.length;
     } catch (failure) { error.textContent = failure.message; }
     finally { preview.disabled = source.disabled = cache.disabled = false; }
   });
   const apply = button(actions,'确认导入',async()=>{
     if (!prepared || apply.disabled) return;
+    if (plugin.literatureImporting) { error.textContent = '文献导入正在进行，请等待完成。'; return; }
+    plugin.literatureImporting = true;
     apply.disabled = preview.disabled = source.disabled = cache.disabled = true;
     error.textContent = '';
     try {
       while (saved < prepared.length) {
         const {original,patch,token} = prepared[saved];
-        if (original || !L.findLiteratureDuplicate(activePapers(plugin),patch)) await savePaper(plugin,original,patch,token);
+        if (original || !L.findLiteratureDuplicate(plugin.store.literature.values(),patch)) await savePaper(plugin,original,patch,token);
         saved++;
       }
       modal.close();
     } catch (failure) {
       error.textContent = `已处理 ${saved} 条。 ${failure.message}`;
     } finally {
+      plugin.literatureImporting = false;
       plugin.refresh();
       apply.disabled = preview.disabled = source.disabled = cache.disabled = false;
     }
@@ -463,4 +482,4 @@ function importLiterature(plugin, root, modal, {el,button,formField}) {
   apply.disabled = true;
 }
 
-module.exports = {renderLiterature,showEasyScholar,editLiterature,editProgress,importLiterature};
+module.exports = {renderLiterature,showEasyScholar,editLiterature,editProgress,importLiterature,refreshLocalZotero};
