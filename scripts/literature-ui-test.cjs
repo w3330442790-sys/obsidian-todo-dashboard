@@ -94,6 +94,47 @@ async function seed(page) {
     await refresh.click();
     await page.waitForFunction(() => window.lastNotice?.includes('新增 0'));
     assert.equal(await page.evaluate(()=>[...p.store.literature.values()].filter(paper=>paper.zoteroKey==='ABCD2345').length),1);
+    await page.getByRole('button',{name:/^Zotero 1/}).click();
+    await page.evaluate(()=>{
+      p.zoteroLocal.listPdfs=async()=>[
+        {key:'ABCD1234',title:'正文',filename:'main.pdf'},
+        {key:'ABCD1235',title:'附录',filename:'appendix.pdf'}
+      ];
+    });
+    await detail.getByRole('button',{name:'从 Zotero 取 PDF'}).click();
+    assert.equal(await page.getByRole('button',{name:'正文 · main.pdf'}).isVisible(),true);
+    assert.equal(await page.getByRole('button',{name:'附录 · appendix.pdf'}).isVisible(),true);
+    await page.getByRole('button',{name:'关闭',exact:true}).click();
+    await page.getByRole('button',{name:/^我的文献库/}).click();
+    await first.click();
+    await page.evaluate(()=>{p.generateLiteratureTranslation=async()=> '已生成的模拟译文';});
+    await detail.getByRole('button',{name:'阅读与翻译'}).click();
+    const original = page.getByLabel('原文选段',{exact:true});
+    const translated = page.getByLabel('译文',{exact:true});
+    await original.fill('Synthetic source text');
+    await page.getByRole('button',{name:'翻译',exact:true}).click();
+    assert.equal(await translated.inputValue(),'已生成的模拟译文');
+    const [left,right] = await Promise.all([original.boundingBox(),translated.boundingBox()]);
+    assert.ok(left.x+left.width<=right.x && Math.abs(left.y-right.y)<2);
+    await page.getByLabel('摘录批注（可选）').fill('人工批注');
+    await page.getByRole('button',{name:'保存阅读摘录'}).click();
+    await page.waitForFunction(()=>testApp.vault.getMarkdownFiles().some(file=>
+      file.path.includes('/literature-notes/lit-0/') && file.raw.includes('人工批注') && file.raw.includes('#page=4')));
+    await page.locator('.td-lit-reader').screenshot({path:path.join(output,'translation-comparison.png')});
+    await page.getByRole('button',{name:'关闭',exact:true}).click();
+    await page.getByRole('button',{name:'文献扩展',exact:true}).click();
+    await page.getByRole('checkbox',{name:/Green Frog/}).uncheck();
+    await page.getByRole('checkbox',{name:'文献翻译',exact:true}).uncheck();
+    await page.getByLabel('待适配 GitHub 仓库（每行一个）').fill('https://github.com/example/notes');
+    await page.getByRole('button',{name:'保存扩展设置'}).click();
+    await page.waitForFunction(()=>p.store.settings.literatureExtensions?.enabled.greenFrog===false);
+    assert.equal(await page.getByRole('button',{name:'EasyScholar',exact:true}).count(),0);
+    assert.equal(await page.getByRole('button',{name:'从 Zotero 刷新',exact:true}).count(),1);
+    assert.deepEqual(await page.evaluate(()=>p.store.settings.literatureExtensions.repositories),['https://github.com/example/notes']);
+    await detail.getByRole('button',{name:'阅读与翻译'}).click();
+    assert.equal(await page.getByRole('button',{name:'翻译',exact:true}).count(),0);
+    assert.equal(await page.getByRole('button',{name:'保存阅读摘录'}).isVisible(),true);
+    await page.getByRole('button',{name:'关闭',exact:true}).click();
 
     const mobile = await browser.newPage({viewport:{width:420,height:880},isMobile:true,hasTouch:true});
     mobile.on('pageerror',error=>errors.push(error.message));
@@ -108,7 +149,7 @@ async function seed(page) {
     await mobileDetails.getByRole('button',{name:'返回列表'}).click();
     assert.equal(await mobileDetails.count(),0);
     assert.deepEqual(errors,[]);
-    console.log('PASS desktop table, details, keyboard selection, attachment expansion, sort, search, collection, metadata edit, and narrow layout');
+    console.log('PASS desktop and narrow library, Zotero refresh and attachment selection, translation comparison, excerpt save, and extension switches');
   } catch (error) {
     console.error(error);
     process.exitCode = 1;

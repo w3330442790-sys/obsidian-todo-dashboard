@@ -179,7 +179,8 @@ async function refreshRanks(store,client,ids,{onlyMissing = false,signal,onProgr
     }
     if (signal?.aborted) break;
     result.queried++;
-    if (!rankEntries(snapshot).length) result.unmatched++;
+    const matched = rankEntries(snapshot).length > 0;
+    if (!matched) result.unmatched++;
     for (const id of group.ids) {
       if (signal?.aborted) break;
       const current = store.literature.get(id);
@@ -187,6 +188,7 @@ async function refreshRanks(store,client,ids,{onlyMissing = false,signal,onProgr
         result.skipped++;
         continue;
       }
+      if (!matched && current.easyScholar && rankEntries(current.easyScholar).length) continue;
       try {
         await store.saveLiterature({...current,easyScholar:snapshot},store.token('literature',id));
         result.saved++;

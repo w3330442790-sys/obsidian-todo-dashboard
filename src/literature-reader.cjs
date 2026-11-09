@@ -1,6 +1,7 @@
 'use strict';
 
 const {uid} = require('./core.cjs');
+const {extensionEnabled} = require('./literature-extensions.cjs');
 const MAX_TEXT = 16000;
 const TARGETS = {zh:'简体中文', en:'英语'};
 
@@ -21,7 +22,7 @@ function literal(text) {
   return fence+'text\n'+text+'\n'+fence;
 }
 
-function excerptMarkdown(paper,{page,source,translation}) {
+function excerptMarkdown(paper,{page,source,translation,comment}) {
   const title=paper.title.replace(/[\r\n]/g,' ');
   const heading='# 阅读摘录';
   const pageLabel=page ? `第 ${page} 页` : '';
@@ -29,12 +30,14 @@ function excerptMarkdown(paper,{page,source,translation}) {
   const sourceLink=pdf && !/[\[\]#|]/.test(pdf)
     ? `[[${pdf}${page?'#page='+page:''}|PDF${pageLabel?' · '+pageLabel:''}]]` : pageLabel;
   return [heading, '## 文献\n\n'+literal(title), sourceLink, source && '## 原文\n\n'+literal(source),
-    translation && '## 译文或笔记\n\n'+literal(translation)].filter(Boolean).join('\n\n')+'\n';
+    translation && '## 译文或笔记\n\n'+literal(translation),comment && '## 批注\n\n'+literal(comment)]
+    .filter(Boolean).join('\n\n')+'\n';
 }
 
 function renderReaderTools(plugin,root,modal,paper,ui,seed={}) {
   if(!/^[\w-]+$/.test(paper.id))throw Error('文献记录 ID 无效');
   const {el,button,formField,formSelect} = ui;
+  root.classList.add('td-lit-reader');
   el(root,'p','',''+paper.title);
   const controls=el(root,'div','td-toolbar');
   const page= formField(controls,'PDF 页码','number',seed.page || paper.currentPage || (paper.pdfPath ? 1 : ''));
@@ -46,14 +49,21 @@ function renderReaderTools(plugin,root,modal,paper,ui,seed={}) {
     return n;
   };
   const desktop=plugin.assistant?.desktop;
+  const translationEnabled=extensionEnabled(plugin.store.settings,'translation');
   const target=formSelect(controls,'译文语言',Object.entries(TARGETS),'zh');
-  const source=formField(root,'原文选段','textarea',seed.text || '');
-  const translation=formField(root,'译文或笔记','textarea','');
-  source.rows=6;
-  translation.rows=6;
+  target.hidden=!translationEnabled;
+  if (!translationEnabled) target.parentElement.hidden=true;
+  const comparison=el(root,'div','td-lit-reader-comparison');
+  const source=formField(comparison,'原文选段','textarea',seed.text || '');
+  const translation=formField(comparison,'译文','textarea','');
+  source.rows=12;
+  translation.rows=12;
+  const comment=formField(root,'摘录批注（可选）','textarea','');
+  comment.rows=3;
   const status=el(root,'p','td-muted');
   status.setAttribute('role','status');
-  el(root,'p','td-muted',desktop ? '点击翻译后，当前选段或所选扫描页会交给已登录的 Codex 处理。' :
+  el(root,'p','td-muted',!translationEnabled ? '可以对照原文和译文，或保存带页码的阅读摘录。' :
+    desktop ? '点击翻译后，当前选段或所选扫描页会交给已登录的 Codex 处理。' :
     '可阅读已同步的译文、保存摘录或记录页码。自动翻译在 Windows 上使用本机 Codex。');
   const actions=el(root,'div','td-toolbar');
   const statusButtons=[];
@@ -63,13 +73,13 @@ function renderReaderTools(plugin,root,modal,paper,ui,seed={}) {
     const controller=new AbortController();
     abort=controller;
     for(const item of statusButtons)item.button.disabled=true;
-    page.disabled=target.disabled=source.disabled=translation.disabled=true;
+    page.disabled=target.disabled=source.disabled=translation.disabled=comment.disabled=true;
     status.textContent='';
     try { await action(controller.signal); }
     catch(error){if(!controller.signal.aborted)status.textContent=error.message;}
     finally{
       abort=null;
-      page.disabled=target.disabled=source.disabled=translation.disabled=false;
+      page.disabled=target.disabled=source.disabled=translation.disabled=comment.disabled=false;
       for(const item of statusButtons)item.button.disabled=item.disabled;
     }
   }
@@ -103,7 +113,7 @@ function renderReaderTools(plugin,root,modal,paper,ui,seed={}) {
     source.value=translation.value='';
   });
   source.addEventListener('input',()=>{if(extracted?.images.length)extracted={...extracted,images:[]};});
-  action('翻译',async signal=>{
+  if (translationEnabled) action('翻译',async signal=>{
     const image=extracted?.images[0]?.data;
     const prompt=translationPrompt(source.value,target.value,!!image);
     status.textContent='正在翻译…';
@@ -129,8 +139,8 @@ function renderReaderTools(plugin,root,modal,paper,ui,seed={}) {
     for(const file of files)button(saved,file.basename,()=>plugin.app.workspace.openLinkText(file.path,'',true),'td-link');
   }
   action('保存阅读摘录',async()=>{
-    const fields={page:pageNumber(),source:source.value.trim(),translation:translation.value.trim()};
-    if(!fields.source&&!fields.translation)throw Error('请填写原文、译文或阅读笔记');
+    const fields={page:pageNumber(),source:source.value.trim(),translation:translation.value.trim(),comment:comment.value.trim()};
+    if(!fields.source&&!fields.translation&&!fields.comment)throw Error('请填写原文、译文或阅读笔记');
     await plugin.store.ensureFolder(plugin.store.root+'/literature-notes');
     await plugin.store.ensureFolder(folder);
     const date=new Date().toISOString().slice(0,19).replace(/:/g,'-');

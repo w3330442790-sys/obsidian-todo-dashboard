@@ -4,6 +4,7 @@ const {uid} = require('./core.cjs');
 const L = require('./literature.cjs');
 const Library = require('./literature-library.cjs');
 const {prepareLiteratureImport} = require('./zotero-local.cjs');
+const {extensionEnabled} = require('./literature-extensions.cjs');
 const {consoleUrl, rankEntries, refreshRanks, savePaperRank} = require('./easyscholar.cjs');
 
 const STATUSES = {unread:'待读', reading:'阅读中', finished:'已读'};
@@ -27,9 +28,14 @@ function renderPaperDetails(plugin,parent,paper,metrics,{el,button}) {
   const actions = el(title,'div','td-lit-actions');
   if (paper.pdfPath) button(actions,paper.currentPage>0?'继续阅读':'打开 PDF',
     ()=>plugin.run(()=>plugin.openLiteraturePdf(paper)),'mod-cta');
+  else if (paper.zoteroKey && plugin.zoteroLocal && extensionEnabled(plugin.store.settings,'zoteroLocal')) {
+    button(actions,'从 Zotero 取 PDF',()=>plugin.showZoteroPdf(paper),'mod-cta');
+  }
   button(actions,'编辑文献',()=>plugin.editLiterature(paper));
   button(actions,'复制引用',()=>plugin.showLiteratureCitation(paper),'td-link');
-  button(actions,'查分区',()=>plugin.showEasyScholar(paper.id),'td-link');
+  if (extensionEnabled(plugin.store.settings,'greenFrog')) {
+    button(actions,'查分区',()=>plugin.showEasyScholar(paper.id),'td-link');
+  }
   const shortcuts = el(parent,'nav','td-lit-detail-shortcuts');
   shortcuts.setAttribute('aria-label','条目详情分区');
 
@@ -135,7 +141,7 @@ function renderRankDetails(parent,snapshot,el,expanded = false) {
   }
 }
 
-function showEasyScholar(plugin,root,modal,paperId,{el,button,formField}) {
+function showEasyScholar(plugin,root,modal,paperId,{el,button,formField},scope) {
   const help = el(root,'p','td-muted','查询时会向 EasyScholar 发送 Secret Key 和期刊或会议名称。');
   const link = el(help,'a','','获取 Secret Key');
   link.href = consoleUrl;
@@ -219,8 +225,8 @@ function showEasyScholar(plugin,root,modal,paperId,{el,button,formField}) {
     }
   }
   async function updateBatch(signal) {
-    const result = await refreshRanks(plugin.store,plugin.easyScholar,activePapers(plugin).map(paper => paper.id),{
-      onlyMissing:true,signal,onProgress:progress => { status.textContent = summary(progress); }
+    const result = await refreshRanks(plugin.store,plugin.easyScholar,scope ?? activePapers(plugin).map(paper => paper.id),{
+      onlyMissing:!scope,signal,onProgress:progress => { status.textContent = summary(progress); }
     });
     if (result.saved) plugin.refresh();
     status.textContent = (signal.aborted ? '已停止 · ' : '') +
@@ -263,7 +269,7 @@ function showEasyScholar(plugin,root,modal,paperId,{el,button,formField}) {
     status.textContent = result.saved ? '已保存查询结果。' : paperId ? '未匹配到等级，已保留原有记录。' : '';
     renderRankDetails(output,result.snapshot,el,true);
   }),'mod-cta');
-  const batch = !paperId && button(actions,'批量查询未查文献',() =>
+  const batch = !paperId && button(actions,scope ? '更新当前列表的分区' : '批量查询未查文献',() =>
     run('正在查询 EasyScholar…',updateBatch));
   const stop = button(actions,'停止查询',() => {
     operation?.abort();
@@ -273,7 +279,8 @@ function showEasyScholar(plugin,root,modal,paperId,{el,button,formField}) {
   stop.disabled = true;
   button(actions,'关闭',() => modal.close());
   el(root,'p','td-muted','只有点击「在 Crossref 查刊名」时才会发送检索词。EasyScholar 密钥只用于 EasyScholar 查询。');
-  if (!paperId) el(root,'p','td-muted','批量查询适用于所有尚无 EasyScholar 查询记录、且已填写期刊或会议名称的文献。');
+  if (!paperId) el(root,'p','td-muted',scope ? `本次范围为打开窗口时筛选出的 ${scope.length} 条文献。手工录入和导入的指标优先保留。` :
+    '批量查询适用于所有尚无 EasyScholar 查询记录、且已填写期刊或会议名称的文献。');
   if (paper?.easyScholar) renderRankDetails(output,paper.easyScholar,el,true);
   return () => operation?.abort();
 }

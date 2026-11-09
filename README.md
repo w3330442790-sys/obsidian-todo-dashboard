@@ -8,6 +8,8 @@
 
 - 进入「文献专区」后，左栏筛选分类、标签和分区，中栏按列排序和搜索，右栏随条目选择展示作者、书目信息、附件和阅读状态。点击标题或使用方向键切换条目，双击有 PDF 的条目可打开原生阅读器。
 - 桌面端首次使用时，在 Zotero 的「设置 → 高级」启用允许本机其他应用与 Zotero 通信。之后保持 Zotero 打开，点「从 Zotero 刷新」即可读取个人库的条目与分类，新增条目并补全缺项。 [Zotero 本机 API](https://www.zotero.org/support/dev/web_api/v3/local_api)
+- 已匹配 Zotero 条目且尚无 PDF 时，可在条目右栏点「从 Zotero 取 PDF」。只有一份附件时自动复制并打开，多份附件时选择一份。附件须已下载到电脑且在 50 MB 以内。
+- 「文献扩展」提供 Green Frog 期刊指标、Zotero 本机连接和文献翻译开关，也可登记待适配的 GitHub 仓库地址。Green Frog 期刊指标适配使用已有 EasyScholar 密钥，可按单篇查询或刷新当前筛选列表。
 - 「导入 Zotero」可预览 CSV、CSL JSON 或 Zotero API JSON。日期保留来源精度。相同 Zotero Key 或 DOI 的条目可补全缺项，已有字段优先。本机刷新和文件导入均不会恢复已移出专区的条目。
 - 通过「导入 PDF」批量添加文件，或在已有条目中点击「添加 PDF」。附件保存在 `Todo工作台/literature-pdfs/`。同内容的附件复用；文件名用作初始标题。点击「打开 PDF」或「继续阅读」在 Obsidian 阅读器中打开文献。
 - 期刊标签显示 IF、JCR 分区和中科院大类、小类分区，可记录指标年份和来源。导出文件带有指标时可识别；如果使用 Zotero Journal Tags，也可选择 `journal-tags-cache.json`，按期刊名补充缺失指标。其余指标可手工填写。 [Zotero 导出说明](https://www.zotero.org/support/kb/exporting) · [Journal Tags 缓存说明](https://github.com/chen7447/journal-tags#使用)
@@ -15,7 +17,7 @@
 - 在「查分区」输入 DOI、ISSN、刊名或简称，点击「在 Crossref 查刊名」，核对候选名称和 ISSN 后选择一项，再点击「查询并保存」。查到等级后会同时保存确认过的刊名。 [Crossref 文档](https://www.crossref.org/documentation/retrieve-metadata/rest-api/)
 - EasyScholar 的 IF、JCR 和中科院大类、小类指标会补充空白字段，用于文献筛选或排序。手工和导入的指标优先。展开卡片上的「EasyScholar」可以查看其余等级和查询日期。结果随文献文件同步。密钥保存在 Obsidian 本机密钥存储，旧版 Obsidian 仅在本次插件运行期间保留密钥。
 - 在「编辑文献」用分号分隔多个分类或主题标签；用顶部筛选器组合查看。点击「复制引用」可复制 BibTeX。可指定引用键，留空时使用文献的稳定 ID。
-- 在 PDF 内选中文本，再点标题栏的「PDF 阅读与翻译」图标可带入原文和页码。也可以从卡片打开「阅读与翻译」，粘贴选段或填写页码后点击「提取该页」。Windows 单页提取使用本机 Python/pypdf，图像页渲染使用 Poppler。点击「翻译」才会把选段或单页图像发给已登录的 Codex。译文可编辑后保存为 Markdown 摘录，并链接回原 PDF 页。
+- 在 PDF 内选中文本，再点标题栏的「PDF 阅读与翻译」图标可带入原文和页码。也可以从条目详情打开「阅读与翻译」，粘贴选段或填写页码后点击「提取该页」。原文与译文可并排对照，窄屏上下排列。Windows 单页提取使用本机 Python/pypdf，图像页渲染使用 Poppler。点击「翻译」才会把选段或单页图像发给已登录的 Codex。原文、译文和个人批注可保存为 Markdown 摘录，并链接回原 PDF 页。
 - 「记住这一页」用于续读，「记录进度」可维护阅读状态、已读页数和总页数。文献记录、附件和摘录分别保存在 `Todo工作台/literature/`、`Todo工作台/literature-pdfs/` 和 `Todo工作台/literature-notes/`。
 - 在 EasySync 同步整个 `Todo工作台/`，两端均升级至 0.6.0 后即可共享排序、文献、进度和摘录。安卓可阅读已同步的 PDF 与译文。
 
@@ -185,7 +187,7 @@ Windows 通过本机 `xftj-transcribe` 工具接入：默认查找 `~/.codex/ski
 w3330442790-sys/obsidian-todo-dashboard
 ```
 
-选择最新版本，或指定 `0.7.0`，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。已有安装可在 BRAT 中检查更新。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
+选择最新版本，或指定 `0.7.1`，安装后在 Obsidian 第三方插件列表中启用 **Todo 工作台**。已有安装可在 BRAT 中检查更新。发布附件见 [Releases](https://github.com/w3330442790-sys/obsidian-todo-dashboard/releases)。
 
 维护者发布新版本的步骤：
 

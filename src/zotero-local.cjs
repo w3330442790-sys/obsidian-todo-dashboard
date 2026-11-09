@@ -2,6 +2,26 @@
 
 const {parseZoteroExport,findLiteratureDuplicate,missingBibliography} = require('./literature.cjs');
 const base = 'http://localhost:23119/api/users/0/';
+const keyPattern = /^[A-Z0-9]{8}$/;
+const text = value => typeof value === 'string' ? value.trim() : '';
+const titleKey = value => text(value).normalize('NFKC').replace(/\s+/g,' ').toLowerCase();
+const doiKey = value => text(value).replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i,'').toLowerCase();
+
+function pdfDescriptor(row,parentKey) {
+  const data = row?.data;
+  const key = row?.key || data?.key;
+  const filename = text(data?.filename);
+  const type = text(data?.contentType).toLowerCase().split(';',1)[0];
+  if (!keyPattern.test(key || '') || data?.itemType !== 'attachment' || data.parentItem !== parentKey ||
+      data.deleted || !['imported_file','imported_url','linked_file'].includes(data.linkMode) ||
+      (type && type !== 'application/pdf') || (!type && !/\.pdf$/i.test(filename))) return null;
+  return {key,title:text(data.title) || filename || 'PDF 附件',filename};
+}
+
+function jsonBody(response) {
+  try { return response.json ?? JSON.parse(response.text); }
+  catch { throw Error('无法识别本机 Zotero 返回的数据。'); }
+}
 
 function collectionPaths(collections) {
   const entries = new Map(collections.filter(row => typeof row?.data?.name === 'string')
@@ -38,6 +58,38 @@ class ZoteroLocal {
     return parseZoteroExport(JSON.stringify(rows),'json');
   }
 
+  async verifyPaper(paper) {
+    const key = paper?.zoteroKey;
+    if (!keyPattern.test(key || '')) throw Error('此文献没有有效的 Zotero 条目标识。');
+    const row = jsonBody(await this.get(new URL('items/'+key,base)));
+    const data = row?.data;
+    const localDoi = doiKey(paper.doi);
+    const remoteDoi = doiKey(data?.DOI);
+    const remoteTitle = titleKey(data?.title || data?.caseName || data?.nameOfAct || data?.subject);
+    const same = localDoi && remoteDoi ? localDoi === remoteDoi : Boolean(remoteTitle && remoteTitle === titleKey(paper.title));
+    if (!data || (row.key || data.key) !== key || data.parentItem || data.deleted ||
+        ['attachment','annotation','note'].includes(data.itemType) || !same) {
+      throw Error('本机 Zotero 条目与当前文献不匹配，请核对库与书目信息。');
+    }
+    return key;
+  }
+
+  async listPdfs(paper) {
+    const key = await this.verifyPaper(paper);
+    const children = await this.readPages('items/'+key+'/children');
+    return children.map(row=>pdfDescriptor(row,key)).filter(Boolean);
+  }
+
+  async pdfUrl(paper,attachmentKey) {
+    if (!keyPattern.test(attachmentKey || '')) throw Error('PDF 附件标识不合法。');
+    const key = await this.verifyPaper(paper);
+    const path = 'items/'+attachmentKey;
+    const row = jsonBody(await this.get(new URL(path,base)));
+    if (pdfDescriptor(row,key)?.key !== attachmentKey) throw Error('Zotero 附件已变更，请重新选择。');
+    const response = await this.get(new URL(path+'/file/view/url',base));
+    return text(response.text);
+  }
+
   async readPages(path) {
     const rows = [];
     const keys = new Set();
@@ -61,7 +113,7 @@ class ZoteroLocal {
     }
   }
 
-  async readPage(url) {
+  async get(url) {
     let timer, response;
     try {
       response = await Promise.race([
@@ -76,10 +128,14 @@ class ZoteroLocal {
     }
     if (!response) throw Error('本机 Zotero 响应超时，请检查 Zotero 是否打开。');
     if (response.status === 403) throw Error('请在 Zotero 设置 → 高级中启用「允许本机其他应用与 Zotero 通信」。');
+    if (response.status === 404) throw Error('本机 Zotero 中未找到该条目或附件。');
     if (response.status !== 200) throw Error(`本机 Zotero 接口暂不可用（HTTP ${response.status}）。`);
-    let page;
-    try { page = response.json ?? JSON.parse(response.text); }
-    catch { throw Error('无法识别本机 Zotero 返回的数据。'); }
+    return response;
+  }
+
+  async readPage(url) {
+    const response = await this.get(url);
+    const page = jsonBody(response);
     if (!Array.isArray(page)) throw Error('无法识别本机 Zotero 返回的数据。');
     const total = Object.entries(response.headers || {}).find(([key])=>key.toLowerCase()==='total-results')?.[1];
     const count = /^\d+$/.test(String(total)) ? Number(total) : undefined;

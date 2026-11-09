@@ -2,6 +2,7 @@
 
 const L = require('./literature.cjs');
 const {rankEntries} = require('./easyscholar.cjs');
+const {extensionEnabled} = require('./literature-extensions.cjs');
 
 const STATUSES = {unread:'待读',reading:'阅读中',finished:'已读'};
 const QUARTILES = ['Q1','Q2','Q3','Q4'];
@@ -106,8 +107,15 @@ function renderLibrary(view,parent,ui,renderDetails) {
   button(actions,'添加文献',() => plugin.editLiterature(),'','＋');
   button(actions,'导入 PDF',() => plugin.showLiteraturePdfImport(),'','▧');
   button(actions,'导入 Zotero',() => plugin.importLiterature(),'','↥');
-  if (plugin.zoteroLocal) button(actions,'从 Zotero 刷新',() => plugin.refreshLocalZotero(),'','↻');
-  button(actions,'EasyScholar',() => plugin.showEasyScholar());
+  if (plugin.zoteroLocal && extensionEnabled(plugin.store.settings,'zoteroLocal')) {
+    button(actions,'从 Zotero 刷新',() => plugin.refreshLocalZotero(),'','↻');
+  }
+  if (extensionEnabled(plugin.store.settings,'greenFrog')) {
+    button(actions,'EasyScholar',() => plugin.showEasyScholar());
+    button(actions,'更新本列表分区',() => plugin.showEasyScholar(undefined,
+      libraryRows(papers,state).map(({paper})=>paper.id)));
+  }
+  button(actions,'文献扩展',()=>plugin.showLiteratureExtensions());
   const detailToggle = button(actions,'条目详情',() => {
     state.showDetail = !state.showDetail;
     syncPanes();

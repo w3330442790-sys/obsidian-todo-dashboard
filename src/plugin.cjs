@@ -12,6 +12,7 @@ const {EasyScholar}=require('./easyscholar.cjs');
 const {PublicationLookup}=require('./publication-lookup.cjs');
 const {ZoteroLocal}=require('./zotero-local.cjs');
 const {renderReaderTools}=require('./literature-reader.cjs');
+const {extensionEnabled,renderExtensions}=require('./literature-extensions.cjs');
 const EASY_SCHOLAR_SECRET='todo-dashboard-easyscholar';
 const DEFAULTS={lists:[{id:'study',name:'学习',color:'#149e9a'},{id:'work',name:'工作',color:'#6488d8'},{id:'life',name:'生活',color:'#d58c48'}],stats:[],recentSort:'modified',excludedFolders:[]};
 function clone(o){return JSON.parse(JSON.stringify(o));}
@@ -381,14 +382,26 @@ class TodoPlugin extends Plugin{
  editLiterature(paper){new SimpleModal(this,paper?'编辑文献':'添加文献',(root,modal)=>Literature.editLiterature(this,root,modal,paper,literatureUI)).open();}
  readingProgress(paper){new SimpleModal(this,'记录阅读进度',(root,modal)=>Literature.editProgress(this,root,modal,paper,literatureUI)).open();}
  importLiterature(){new SimpleModal(this,'导入 Zotero',(root,modal)=>Literature.importLiterature(this,root,modal,literatureUI)).open();}
- refreshLocalZotero(){return this.run(()=>Literature.refreshLocalZotero(this,text=>new Notice(text,8000)));}
+ refreshLocalZotero(){
+  if(this.zoteroLocal&&extensionEnabled(this.store.settings,'zoteroLocal'))return this.run(()=>Literature.refreshLocalZotero(this,text=>new Notice(text,8000)));
+ }
+ showZoteroPdf(paper){
+  if(this.zoteroLocal&&extensionEnabled(this.store.settings,'zoteroLocal')){
+   new SimpleModal(this,'从 Zotero 取 PDF',(root,modal)=>LiteraturePdf.renderZoteroPdfDialog(this,root,modal,paper,literatureUI)).open();
+  }
+ }
+ showLiteratureExtensions(){
+  new SimpleModal(this,'文献扩展',(root,modal)=>renderExtensions(this,root,modal,literatureUI)).open();
+ }
  easyScholarKey(){return this.app.secretStorage?.getSecret(EASY_SCHOLAR_SECRET)??this.sessionEasyScholarKey??'';}
  setEasyScholarKey(value){
   if(this.app.secretStorage)this.app.secretStorage.setSecret(EASY_SCHOLAR_SECRET,value);
   else this.sessionEasyScholarKey=value;
  }
- showEasyScholar(paperId){
-  new SimpleModal(this,'EasyScholar 分区查询',(root,modal)=>Literature.showEasyScholar(this,root,modal,paperId,literatureUI)).open();
+ showEasyScholar(paperId,scope){
+  if(extensionEnabled(this.store.settings,'greenFrog')){
+   new SimpleModal(this,'EasyScholar 分区查询',(root,modal)=>Literature.showEasyScholar(this,root,modal,paperId,literatureUI,scope)).open();
+  }
  }
  literatureForPdf(file){
   if(file?.extension?.toLowerCase()!=='pdf')return;
