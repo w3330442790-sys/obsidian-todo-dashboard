@@ -1,5 +1,6 @@
 'use strict';
 
+const {normalizeSnapshot} = require('./easyscholar.cjs');
 const statuses = new Set(['unread', 'reading', 'finished']);
 const metricFields = ['impactFactor', 'jcrQuartile', 'casMajor', 'casMinor'];
 const cacheSource = 'EasyScholar / Zotero Journal Tags';
@@ -110,8 +111,10 @@ function normalizeLiteratureRecord(input) {
   }
   if (Object.keys(fieldSources).length) metrics.fieldSources = fieldSources;
 
+  const publicationTitle = trimmed(input.publicationTitle);
   return {
-    title, authors: trimmed(input.authors), publicationTitle: trimmed(input.publicationTitle),
+    title, authors: trimmed(input.authors), publicationTitle,
+    ...(Object.hasOwn(input,'easyScholar') ? {easyScholar:normalizeSnapshot(input.easyScholar,publicationTitle)} : {}),
     publicationYear: yearField(input.publicationYear, '发表年份必须为四位数'),
     doi: doiField(input.doi), url: urlField(input.url), zoteroKey: itemKey(input.zoteroKey),
     collections: labels(input.collections), tags: labels(input.tags), citationKey: citationKey(input.citationKey),
@@ -207,6 +210,22 @@ function setImportedMetric(metrics, key, value) {
   }
   const imported = readOptional(metricReaders[key], value);
   if (!missing(imported)) metrics[key] = imported;
+}
+
+function effectiveLiteratureMetrics(paper) {
+  const snapshot = paper.easyScholar;
+  if (!snapshot) return paper.metrics;
+  const metrics = {...paper.metrics, fieldSources:{...paper.metrics.fieldSources}};
+  const ranks = snapshot.official;
+  for (const [key,values] of [
+    ['impactFactor',[ranks.sciif]], ['jcrQuartile',[ranks.sci,ranks.ssci]],
+    ['casMajor',[ranks.sciUp]], ['casMinor',[ranks.sciUpSmall]]
+  ]) {
+    if (!missing(metrics[key])) continue;
+    for (const value of values) setImportedMetric(metrics,key,value);
+    if (!missing(metrics[key])) metrics.fieldSources[key] = 'EasyScholar';
+  }
+  return metrics;
 }
 
 function noteText(note) {
@@ -435,4 +454,4 @@ function applyJournalTagsCache(records, value) {
   return { records: updated, matched, enriched };
 }
 
-module.exports = { normalizeLiteratureRecord, readingPercent, literatureBibTeX, findLiteratureDuplicate, parseZoteroExport, applyJournalTagsCache };
+module.exports = { normalizeLiteratureRecord, effectiveLiteratureMetrics, readingPercent, literatureBibTeX, findLiteratureDuplicate, parseZoteroExport, applyJournalTagsCache };

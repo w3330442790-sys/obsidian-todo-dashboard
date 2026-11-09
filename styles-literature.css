@@ -33,6 +33,14 @@
 .td-lit-form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px 12px; }
 .td-lit-form-grid .td-input { min-width: 0; width: 100%; }
 .td-lit-import-preview { max-height: 160px; overflow: auto; overflow-wrap: anywhere; }
+.td-lit-ranks { margin: 8px 0; overflow-wrap: anywhere; }
+.td-lit-ranks summary { cursor: pointer; }
+.td-lit-rank-list { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 4px 10px; margin: 6px 0; }
+.td-lit-rank-list dd { margin: 0; }
+.td-lit-resolver { display: grid; gap: 6px; }
+.td-lit-resolver > button { justify-self: start; }
+.td-lit-candidate { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 4px 0; }
+.td-lit-candidate button { white-space: normal; text-align: start; }
 
 @media (max-width: 500px) {
   .td-lit-form-grid { grid-template-columns: minmax(0,1fr); }

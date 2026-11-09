@@ -29,3 +29,17 @@ test('literature metrics and reading progress sync as individual vault files',as
  assert.equal(desktop.literature.get(paper.id).currentPage,7);
  assert.equal(desktop.tasks.size,0);
 });
+
+test('EasyScholar results survive a vault reload and detach when the publication changes',async()=>{
+ const v=vault(),desktop=new Store(v,'Todo工作台'),tablet=new Store(v,'Todo工作台');
+ const ranks={publicationName:'Nature',checkedAt:'2026-11-09T04:00:00.000Z',official:{sci:'Q1',sciif:'8.2'},custom:[]};
+ await desktop.saveLiterature({id:'a',title:'Article',publicationTitle:'Nature',metrics:{impactFactor:6},easyScholar:ranks});
+ await tablet.load();
+ const saved=tablet.literature.get('a');
+ assert.deepEqual(saved.easyScholar,ranks);
+ assert.equal(saved.metrics.impactFactor,6);
+ await tablet.saveLiterature({...saved,publicationTitle:'Science'},tablet.token('literature','a'));
+ await desktop.load();
+ assert.equal(desktop.literature.get('a').easyScholar,null);
+ assert.equal(desktop.literature.get('a').metrics.impactFactor,6);
+});

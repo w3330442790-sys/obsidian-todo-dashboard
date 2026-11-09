@@ -8,7 +8,10 @@ const {ExplorerOrder}=require('./explorer-order.cjs');
 const Literature=require('./literature-view.cjs');
 const LiteratureData=require('./literature.cjs');
 const LiteraturePdf=require('./literature-pdf.cjs');
+const {EasyScholar}=require('./easyscholar.cjs');
+const {PublicationLookup}=require('./publication-lookup.cjs');
 const {renderReaderTools}=require('./literature-reader.cjs');
+const EASY_SCHOLAR_SECRET='todo-dashboard-easyscholar';
 const DEFAULTS={lists:[{id:'study',name:'学习',color:'#149e9a'},{id:'work',name:'工作',color:'#6488d8'},{id:'life',name:'生活',color:'#d58c48'}],stats:[],recentSort:'modified',excludedFolders:[]};
 function clone(o){return JSON.parse(JSON.stringify(o));}
 function taskDraft(seed){
@@ -90,6 +93,8 @@ class TodoPlugin extends Plugin{
   let xftj={};try{xftj=JSON.parse(localStorage.getItem(this.localKey+':xftj')||'{}');}catch{}this.xftjSettings=xftj;
   this.courseBridge=Platform?.isDesktopApp?new XftjBridge({script:xftj.script,python:xftj.python||'python'}):null;
   this.shareReader=new ShareReader({request:options=>requestUrl(options)});
+  this.easyScholar=new EasyScholar(options=>requestUrl(options),()=>this.easyScholarKey());
+  this.publicationLookup=new PublicationLookup(options=>requestUrl(options));
   this.courses=new CourseService({vault:this.app.vault,ensureFolder:path=>this.store.ensureFolder(path),generate:(prompt,options)=>this.generateJob(prompt,options),bridge:this.courseBridge,shareReader:this.shareReader,localGenerate:Platform?.isDesktopApp?(text,options)=>new LocalCourse({request:args=>requestUrl(args)}).run(text,options):null,reader:Platform?.isDesktopApp?new DocumentReader():null});
   try{this.timer=JSON.parse(localStorage.getItem(this.localKey)||'null');}catch{new Notice('计时恢复数据损坏，请检查本机存储');}
   if(this.timer&&(!Array.isArray(this.timer.segments)||typeof this.timer.accumulated!=='number'))this.timer=null;
@@ -374,6 +379,14 @@ class TodoPlugin extends Plugin{
  editLiterature(paper){new SimpleModal(this,paper?'编辑文献':'添加文献',(root,modal)=>Literature.editLiterature(this,root,modal,paper,literatureUI)).open();}
  readingProgress(paper){new SimpleModal(this,'记录阅读进度',(root,modal)=>Literature.editProgress(this,root,modal,paper,literatureUI)).open();}
  importLiterature(){new SimpleModal(this,'导入 Zotero',(root,modal)=>Literature.importLiterature(this,root,modal,literatureUI)).open();}
+ easyScholarKey(){return this.app.secretStorage?.getSecret(EASY_SCHOLAR_SECRET)??this.sessionEasyScholarKey??'';}
+ setEasyScholarKey(value){
+  if(this.app.secretStorage)this.app.secretStorage.setSecret(EASY_SCHOLAR_SECRET,value);
+  else this.sessionEasyScholarKey=value;
+ }
+ showEasyScholar(paperId){
+  new SimpleModal(this,'EasyScholar 分区查询',(root,modal)=>Literature.showEasyScholar(this,root,modal,paperId,literatureUI)).open();
+ }
  literatureForPdf(file){
   if(file?.extension?.toLowerCase()!=='pdf')return;
   return [...this.store.literature.values()].find(paper=>!paper.deleted&&paper.pdfPath===file.path);
